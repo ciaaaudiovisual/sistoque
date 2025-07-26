@@ -4,7 +4,7 @@ import streamlit as st
 from utils import supabase_client_hash_func
 from supabase import Client
 
-@st.cache_data(ttl=60, hash_funcs={Client: supabase_client_hash_func})
+#@st.cache_data(ttl=60, hash_funcs={Client: supabase_client_hash_func})
 def get_produtos_pdv(supabase_client: Client):
     """Busca produtos com estoque positivo usando a conexão fornecida."""
     response = supabase_client.table('produtos').select('id, nome, preco_venda, foto_url, estoque_atual').gt('estoque_atual', 0).order('nome').execute()
