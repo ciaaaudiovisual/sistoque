@@ -1,15 +1,15 @@
 # pages/pdv_page.py
-
 import streamlit as st
 from streamlit_card import card
-from utils import init_connection # Import the connection utility
+# --- MODIFICADO ---
+from utils import supabase_client_hash_func
+from supabase import Client
 
 # --- CORRECTED FUNCTION ---
-@st.cache_data(ttl=60)
-def get_produtos_pdv():
-    """Busca produtos com estoque positivo. A conexão é obtida aqui dentro."""
-    supabase = init_connection() # Get the connection inside the cached function
-    response = supabase.table('produtos').select('id, nome, preco_venda, foto_url, estoque_atual').gt('estoque_atual', 0).order('nome').execute()
+@st.cache_data(ttl=60, hash_funcs={Client: supabase_client_hash_func})
+def get_produtos_pdv(supabase_client: Client):
+    """Busca produtos com estoque positivo usando a conexão fornecida."""
+    response = supabase_client.table('produtos').select('id, nome, preco_venda, foto_url, estoque_atual').gt('estoque_atual', 0).order('nome').execute()
     return response.data
 
 def finalizar_venda(supabase_client, carrinho):
