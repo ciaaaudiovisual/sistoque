@@ -3,3 +3,4 @@ supabase
 pandas
 streamlit-option-menu
 streamlit-card
+pytz
