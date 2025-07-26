@@ -4,6 +4,11 @@ from supabase import create_client
 import pandas as pd
 import time
 
+if 'user' not in st.session_state or st.session_state.user is None:
+    st.error("🔒 Por favor, faça o login para acessar esta página.")
+    st.page_link("dashboard.py", label="Ir para a página de Login", icon="🏠")
+    st.stop() # Interrompe a execução
+
 # Conexão (pode ser movida para um módulo separado depois)
 @st.cache_resource
 def init_connection():
