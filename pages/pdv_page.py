@@ -5,8 +5,8 @@ import traceback
 
 class PontoDeVendaApp:
     """
-    Uma versão avançada do PDV com múltiplos modos de visualização (Grelha e Lista)
-    e uma interface de operador mais refinada e eficiente.
+    Uma versão completamente reformulada do PDV, focada na experiência do utilizador,
+    eficiência e um design mais limpo e profissional.
     """
     def __init__(self, supabase_client: Client):
         if not isinstance(supabase_client, Client):
@@ -28,9 +28,10 @@ class PontoDeVendaApp:
     def get_products_and_categories(_self, supabase_client: Client):
         """Busca todos os produtos e categorias de uma só vez."""
         try:
+            # Aumenta o limite para garantir que todos os produtos sejam retornados
             response = supabase_client.table('produtos').select(
                 'id, nome, preco_venda, estoque_atual, tipo, foto_url'
-            ).gt('estoque_atual', 0).limit(1000).execute()
+            ).gt('estoque_atual', 0).limit(2000).execute() # Aumentado o limite
             produtos = response.data
             categorias = ["Todos"] + sorted(list(set([p['tipo'] for p in produtos if p['tipo']])))
             return produtos, categorias
@@ -40,16 +41,20 @@ class PontoDeVendaApp:
 
     # --- Funções de controlo do carrinho ---
     def _incrementar_quantidade(self, id_produto: int):
+        """Incrementa a quantidade de um item no carrinho."""
         if id_produto in st.session_state.pdv_carrinho:
             st.session_state.pdv_carrinho[id_produto]['quantidade'] += 1
 
     def _decrementar_quantidade(self, id_produto: int):
+        """Decrementa a quantidade de um item. Remove se chegar a zero."""
         if id_produto in st.session_state.pdv_carrinho:
             st.session_state.pdv_carrinho[id_produto]['quantidade'] -= 1
+            # Se a quantidade for zero, remove o item do carrinho.
             if st.session_state.pdv_carrinho[id_produto]['quantidade'] <= 0:
                 del st.session_state.pdv_carrinho[id_produto]
 
     def _adicionar_ao_carrinho(self, produto: dict):
+        """Adiciona um produto ao carrinho ou incrementa a sua quantidade."""
         id_produto = produto['id']
         carrinho = st.session_state.pdv_carrinho
         if id_produto in carrinho:
@@ -76,6 +81,7 @@ class PontoDeVendaApp:
 
     # --- Funções de Renderização da UI ---
     def _renderizar_categorias(self, categorias):
+        """Renderiza a navegação por categorias na sidebar."""
         st.sidebar.title("Categorias")
         categoria_selecionada = st.sidebar.radio("Filtre por categoria:", options=categorias, key="pdv_categoria_radio", label_visibility="collapsed")
         if st.session_state.pdv_categoria_selecionada != categoria_selecionada:
@@ -111,9 +117,11 @@ class PontoDeVendaApp:
         with header_cols[1]:
             if st.button("Grelha 🖼️", use_container_width=True, type="secondary" if st.session_state.pdv_view_mode != "Grelha" else "primary"):
                 st.session_state.pdv_view_mode = "Grelha"
+                st.rerun()
         with header_cols[2]:
             if st.button("Lista 📜", use_container_width=True, type="secondary" if st.session_state.pdv_view_mode != "Lista" else "primary"):
                 st.session_state.pdv_view_mode = "Lista"
+                st.rerun()
 
         produtos_filtrados = [p for p in produtos if p['tipo'] == categoria_selecionada] if categoria_selecionada != "Todos" else produtos
         if not produtos_filtrados: st.info("Nenhum produto encontrado nesta categoria."); return
@@ -124,6 +132,7 @@ class PontoDeVendaApp:
             self._renderizar_catalogo_lista(produtos_filtrados)
 
     def _renderizar_carrinho(self):
+        """Renderiza o carrinho de compras com os novos controlos de quantidade."""
         st.header("Carrinho")
         if not st.session_state.pdv_carrinho: st.info("O carrinho está vazio."); st.session_state.payment_step = False; return
 
@@ -134,6 +143,7 @@ class PontoDeVendaApp:
                 col_info, col_qtd, col_remove = st.columns([4, 3, 1])
                 with col_info: st.write(f"**{item_data['nome']}**"); st.caption(f"R$ {subtotal:.2f}")
                 with col_qtd:
+                    # --- NOVO: Botões de Mais e Menos ---
                     q_c1, q_c2, q_c3 = st.columns([1, 1, 1])
                     q_c1.button("−", key=f"dec_{item_id}", on_click=self._decrementar_quantidade, args=(item_id,), use_container_width=True)
                     q_c2.write(f"<div style='text-align: center; padding-top: 5px;'>{item_data['quantidade']}</div>", unsafe_allow_html=True)
