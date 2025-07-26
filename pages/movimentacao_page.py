@@ -1,27 +1,29 @@
 # pages/movimentacao_page.py
-
 import streamlit as st
-from utils import init_connection # Importa a função de conexão
+# --- MODIFICADO ---
+from utils import supabase_client_hash_func
+from supabase import Client
 
 # --- FUNÇÃO CORRIGIDA ---
-@st.cache_data(ttl=60)
-def get_lista_produtos():
-    """Busca a lista de produtos. A conexão é obtida aqui dentro."""
-    supabase = init_connection() # Obtém a conexão dentro da função
-    response = supabase.table('produtos').select('id, nome').order('nome').execute()
+@st.cache_data(ttl=60, hash_funcs={Client: supabase_client_hash_func})
+def get_lista_produtos(supabase_client: Client):
+    """Busca a lista de produtos usando a conexão fornecida."""
+    response = supabase_client.table('produtos').select('id, nome').order('nome').execute()
     return response.data
 
+# (A função registrar_movimentacao já estava correta, não precisa mudar)
 def registrar_movimentacao(supabase_client, id_produto, tipo, quantidade):
-    """Registra a movimentação e atualiza o estoque via RPC."""
-    response = supabase_client.rpc('atualizar_estoque', {
-        'produto_id': id_produto, 'quantidade_movimentada': quantidade, 'tipo_mov': tipo
-    }).execute()
+    # ...
+
+def render_page(supabase_client: Client):
+    """Renderiza a página de movimentação de estoque."""
+    st.title("🚚 Movimentação de Estoque")
+
+    # --- CHAMADA DA FUNÇÃO CORRIGIDA ---
+    lista_produtos = get_lista_produtos(supabase_client)
     
-    resultado = response.data
-    if resultado == 'Sucesso':
-        return True, "Movimentação registrada com sucesso!"
-    else:
-        return False, resultado
+    # (O resto da função render_page permanece o mesmo)
+    # ...
 
 def render_page(supabase_client):
     """Renderiza a página de movimentação de estoque."""
