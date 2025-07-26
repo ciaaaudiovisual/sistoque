@@ -11,6 +11,10 @@ st.set_page_config(page_title="Sistema de Estoque", layout="wide")
 # Inicializa o cliente Supabase
 supabase = init_connection()
 
+# Se a conexão falhar, interrompe a execução
+if not supabase:
+    st.stop()
+
 # --- Gerenciamento de Estado da Sessão ---
 if 'user' not in st.session_state:
     st.session_state.user = None
@@ -19,7 +23,7 @@ if 'user_role' not in st.session_state:
 
 # --- Funções de Autenticação ---
 def get_user_profile(user_id):
-    response = supabase.table('perfis').select('cargo, status').eq('id', user_id).single().execute()
+    response = supabase.table('perfis').select('cargo, status, nome_completo').eq('id', user_id).single().execute()
     return response.data if response.data else None
 
 def logout():
@@ -29,7 +33,6 @@ def logout():
 
 # --- TELA DE LOGIN ---
 if st.session_state.user is None:
-    # Esconde o menu lateral padrão do Streamlit
     st.markdown("""
         <style>
             [data-testid="stSidebar"] {
@@ -87,7 +90,6 @@ if st.session_state.user is None:
 else:
     # --- APLICATIVO PRINCIPAL PÓS-LOGIN ---
     
-    # Menu Superior
     with st.container():
         selected = option_menu(
             menu_title=None,
@@ -102,17 +104,14 @@ else:
             }
         )
     
-    # Botão de Sair posicionado elegantemente
     st.sidebar.subheader(f"Bem-vindo(a), {st.session_state.user.user_metadata.get('nome_completo', '')}!")
     st.sidebar.write(f"Cargo: **{st.session_state.user_role}**")
     if st.sidebar.button("Sair (Logout)", use_container_width=True):
         logout()
 
-    # Renderiza a página selecionada no menu
     if selected == "Dashboard":
         st.title("📈 Dashboard Principal")
         st.write("Visão geral do seu negócio.")
-        # Adicione aqui seus KPIs e gráficos
         
     if selected == "PDV":
         pdv_page.render_page(supabase)
