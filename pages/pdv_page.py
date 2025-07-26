@@ -5,7 +5,8 @@ import traceback
 
 class PontoDeVendaApp:
     """
-    Classe para encapsular toda a lógica da página do Ponto de Venda (PDV).
+    Classe para encapsular a nova lógica da página do Ponto de Venda (PDV)
+    com um layout mais compacto e profissional.
     """
     def __init__(self, supabase_client: Client):
         if not isinstance(supabase_client, Client):
@@ -15,9 +16,10 @@ class PontoDeVendaApp:
         
         if 'pdv_carrinho' not in st.session_state:
             st.session_state.pdv_carrinho = {}
+        if 'pdv_search_query' not in st.session_state:
+            st.session_state.pdv_search_query = ""
 
     def _adicionar_ao_carrinho(self, produto: dict):
-        """Adiciona um item ao carrinho ou incrementa a sua quantidade."""
         id_produto = produto['id']
         carrinho = st.session_state.pdv_carrinho
         if id_produto in carrinho:
@@ -28,22 +30,18 @@ class PontoDeVendaApp:
                 "quantidade": 1,
                 "preco_unitario": produto['preco_venda']
             }
-        # A chamada st.rerun() foi removida daqui para uma interação mais suave.
-        # O próprio on_click do botão já aciona a atualização.
 
     def _remover_do_carrinho(self, id_produto: int):
-        """Remove um item do carrinho."""
         if id_produto in st.session_state.pdv_carrinho:
             del st.session_state.pdv_carrinho[id_produto]
+            st.rerun()
 
     def _atualizar_quantidade(self, id_produto: int):
-        """Callback para atualizar a quantidade a partir do st.number_input."""
         nova_quantidade = st.session_state[f"qtd_{id_produto}"]
         if id_produto in st.session_state.pdv_carrinho:
             st.session_state.pdv_carrinho[id_produto]['quantidade'] = nova_quantidade
 
     def _finalizar_venda(self):
-        """Processa a venda, regista as movimentações e limpa o carrinho."""
         carrinho = st.session_state.pdv_carrinho
         erros = []
         with st.spinner("A processar a Venda..."):
@@ -57,7 +55,6 @@ class PontoDeVendaApp:
                     if response.data != 'Sucesso':
                         erros.append(f"Produto {item_data['nome']}: {response.data}")
                 except Exception as e:
-                    # --- CORREÇÃO: Mostra o erro real vindo do Supabase ---
                     erros.append(f"Produto {item_data['nome']}: Erro de comunicação - {e}")
         
         if erros:
@@ -68,82 +65,110 @@ class PontoDeVendaApp:
             st.rerun()
 
     def _renderizar_catalogo(self):
-        """Busca e exibe os produtos disponíveis para venda."""
-        st.subheader("Catálogo de Produtos")
-        if st.button("🔄 Recarregar Produtos"):
-            st.rerun()
+        st.subheader("Adicionar Produtos")
+
+        # --- NOVO: Barra de pesquisa ---
+        st.text_input(
+            "Pesquisar produto por nome", 
+            key="pdv_search_query",
+            placeholder="Digite o nome do produto..."
+        )
+        query = st.session_state.pdv_search_query
 
         try:
             response = self.supabase.table('produtos').select(
-                'id, nome, preco_venda, foto_url, estoque_atual'
+                'id, nome, preco_venda, estoque_atual'
             ).gt('estoque_atual', 0).order('nome').execute()
             produtos = response.data
         except Exception as e:
             st.error(f"Não foi possível carregar os produtos do catálogo: {e}")
             return
 
-        if not produtos:
-            st.warning("Nenhum produto com estoque disponível foi encontrado.")
+        # --- NOVO: Filtrar produtos com base na pesquisa ---
+        if query:
+            produtos_filtrados = [
+                p for p in produtos if query.lower() in p['nome'].lower()
+            ]
+        else:
+            produtos_filtrados = produtos
+
+        if not produtos_filtrados:
+            st.info("Nenhum produto encontrado.")
             return
 
-        num_cols = 4
-        cols = st.columns(num_cols)
-        for i, produto in enumerate(produtos):
-            with cols[i % num_cols]:
-                with st.container(border=True):
-                    st.image(produto['foto_url'] or "https://placehold.co/300x200?text=Sem+Imagem")
-                    st.subheader(f"{produto['nome']}")
-                    st.write(f"**R$ {produto['preco_venda']:.2f}**")
+        # --- NOVO: Layout em lista compacta ---
+        list_container = st.container(height=400, border=False)
+        with list_container:
+            # Cabeçalho da lista
+            c1, c2, c3 = st.columns([4, 2, 1.5])
+            c1.markdown("**Produto**")
+            c2.markdown("**Preço**")
+            c3.markdown("**Ação**")
+            st.divider()
+
+            for produto in produtos_filtrados:
+                col1, col2, col3 = st.columns([4, 2, 1.5])
+                with col1:
+                    st.write(produto['nome'])
+                with col2:
+                    st.write(f"R$ {produto['preco_venda']:.2f}")
+                with col3:
                     st.button(
-                        "Adicionar", key=f"add_{produto['id']}",
-                        on_click=self._adicionar_ao_carrinho, args=(produto,),
+                        "Adicionar", 
+                        key=f"add_{produto['id']}",
+                        on_click=self._adicionar_ao_carrinho, 
+                        args=(produto,),
                         use_container_width=True
                     )
+                st.divider()
     
     def _renderizar_carrinho(self):
-        """Exibe o carrinho de compras e as suas opções."""
-        st.subheader("Carrinho de Compras")
+        st.subheader("Resumo da Venda")
         carrinho = st.session_state.pdv_carrinho
 
         if not carrinho:
             st.info("O carrinho está vazio.")
             return
 
-        total_venda = 0
-        for item_id, item_data in list(carrinho.items()):
-            subtotal = item_data['quantidade'] * item_data['preco_unitario']
-            total_venda += subtotal
-            
-            c1, c2, c3 = st.columns([0.6, 0.25, 0.15])
-            with c1:
-                st.write(f"**{item_data['nome']}** (R$ {subtotal:.2f})")
-            with c2:
-                # --- CORREÇÃO: Usando on_change para uma atualização mais suave ---
-                st.number_input(
-                    "Qtd.", min_value=1,
-                    key=f"qtd_{item_id}",
-                    value=item_data['quantidade'],
-                    on_change=self._atualizar_quantidade,
-                    args=(item_id,),
-                    label_visibility="collapsed"
-                )
-            with c3:
-                st.button("❌", key=f"del_{item_id}", help="Remover item", 
-                          on_click=self._remover_do_carrinho, args=(item_id,))
+        # --- NOVO: Layout do carrinho mais limpo ---
+        cart_container = st.container(height=350, border=False)
+        with cart_container:
+            total_venda = 0
+            for item_id, item_data in list(carrinho.items()):
+                subtotal = item_data['quantidade'] * item_data['preco_unitario']
+                total_venda += subtotal
+                
+                c1, c2, c3 = st.columns([5, 2, 1])
+                with c1:
+                    st.write(f"**{item_data['nome']}**")
+                    st.caption(f"{item_data['quantidade']} un x R$ {item_data['preco_unitario']:.2f} = R$ {subtotal:.2f}")
+                with c2:
+                    st.number_input(
+                        "Qtd.", min_value=1,
+                        key=f"qtd_{item_id}",
+                        value=item_data['quantidade'],
+                        on_change=self._atualizar_quantidade,
+                        args=(item_id,),
+                        label_visibility="collapsed"
+                    )
+                with c3:
+                    st.button("❌", key=f"del_{item_id}", help="Remover item", 
+                              on_click=self._remover_do_carrinho, args=(item_id,),
+                              use_container_width=True)
+                st.divider()
         
-        st.divider()
-        st.metric("TOTAL DA VENDA", f"R$ {total_venda:.2f}")
+        st.subheader(f"TOTAL: R$ {total_venda:.2f}")
 
         if st.button("💳 Finalizar Venda", use_container_width=True, type="primary", disabled=(not carrinho)):
             self._finalizar_venda()
 
     def render(self):
-        """Renderiza a página completa do PDV."""
         st.title("🛒 Ponto de Venda (PDV)")
-        col_produtos, col_carrinho = st.columns([3, 1.5])
+        col_produtos, col_carrinho = st.columns([1.5, 1])
 
         with col_produtos:
             self._renderizar_catalogo()
+
         with col_carrinho:
             self._renderizar_carrinho()
 
