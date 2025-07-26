@@ -4,3 +4,6 @@ pandas
 streamlit-option-menu
 streamlit-card
 pytz
+streamlit-webrtc 
+pyzbar 
+av
