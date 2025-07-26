@@ -1,11 +1,18 @@
-import streamlit as st
+# pages/movimentacao_page.py
 
+import streamlit as st
+from utils import init_connection # Importa a função de conexão
+
+# --- FUNÇÃO CORRIGIDA ---
 @st.cache_data(ttl=60)
-def get_lista_produtos(supabase_client):
-    response = supabase_client.table('produtos').select('id, nome').order('nome').execute()
+def get_lista_produtos():
+    """Busca a lista de produtos. A conexão é obtida aqui dentro."""
+    supabase = init_connection() # Obtém a conexão dentro da função
+    response = supabase.table('produtos').select('id, nome').order('nome').execute()
     return response.data
 
 def registrar_movimentacao(supabase_client, id_produto, tipo, quantidade):
+    """Registra a movimentação e atualiza o estoque via RPC."""
     response = supabase_client.rpc('atualizar_estoque', {
         'produto_id': id_produto, 'quantidade_movimentada': quantidade, 'tipo_mov': tipo
     }).execute()
@@ -17,9 +24,12 @@ def registrar_movimentacao(supabase_client, id_produto, tipo, quantidade):
         return False, resultado
 
 def render_page(supabase_client):
+    """Renderiza a página de movimentação de estoque."""
     st.title("🚚 Movimentação de Estoque")
 
-    lista_produtos = get_lista_produtos(supabase_client)
+    # --- CHAMADA DA FUNÇÃO CORRIGIDA ---
+    lista_produtos = get_lista_produtos() # A chamada agora não tem argumentos
+    
     produtos_dict = {produto['nome']: produto['id'] for produto in lista_produtos}
 
     if not produtos_dict:
@@ -40,6 +50,6 @@ def render_page(supabase_client):
                     sucesso, mensagem = registrar_movimentacao(supabase_client, id_produto_selecionado, tipo_movimentacao, quantidade)
                     if sucesso:
                         st.success(mensagem)
-                        st.cache_data.clear()
+                        st.cache_data.clear() # Limpa todo o cache para atualizar as outras páginas
                     else:
                         st.error(mensagem)
