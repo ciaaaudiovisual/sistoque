@@ -2,7 +2,8 @@ import streamlit as st
 from supabase import create_client
 import pandas as pd
 
-# --- Conexão ---
+# --- Conexão e Verificação de Permissão de Admin ---
+# (O código de conexão e verificação de 'Admin' permanece o mesmo)
 @st.cache_resource
 def init_connection():
     url = st.secrets["SUPABASE_URL"]
@@ -11,86 +12,73 @@ def init_connection():
 
 supabase = init_connection()
 
-# --- Verificação de Permissão ---
 if 'user_role' not in st.session_state or st.session_state.user_role != 'Admin':
-    st.error("🚫 Acesso negado. Você precisa ser um Administrador para acessar esta página.")
-    st.stop() # Interrompe a execução da página
+    st.error("🚫 Acesso negado.")
+    st.stop()
 
-# --- Layout e Funções da Página ---
-st.title("👑 Gerenciamento de Usuários e Permissões")
-
-# Função para buscar todos os perfis
+# --- Funções ---
 def get_all_profiles():
-    response = supabase.table('perfis').select('*').execute()
+    # Agora buscamos também o email da tabela de usuários do Supabase
+    response = supabase.rpc('get_all_user_profiles').execute()
     return pd.DataFrame(response.data)
 
-tab1, tab2 = st.tabs(["Convidar Novo Usuário", "Gerenciar Usuários Existentes"])
+def update_user_status(user_id, new_status):
+    try:
+        supabase.table('perfis').update({'status': new_status}).eq('id', user_id).execute()
+        return True
+    except Exception as e:
+        st.error(f"Erro ao atualizar status: {e}")
+        return False
 
-with tab1:
-    st.subheader("Convidar Novo Usuário")
-    with st.form("invite_form", clear_on_submit=True):
-        email = st.text_input("Email do novo usuário")
-        cargo = st.selectbox("Selecione o Cargo", ["Operador", "Admin"])
-        
-        submitted = st.form_submit_button("Enviar Convite")
-        if submitted:
-            try:
-                # O Supabase Auth lida com o envio do convite por email
-                # A senha será definida pelo próprio usuário no primeiro acesso
-                # Precisamos usar a SERVICE_ROLE_KEY para convidar usuários
-                # Guarde-a nos seus secrets como SUPABASE_SERVICE_KEY
-                
-                # ATENÇÃO: A função invite_user_by_email foi descontinuada em algumas bibliotecas.
-                # A forma moderna é criar o usuário e ele receberá um email de confirmação/convite.
-                
-                # Usando a chave de serviço para ter privilégios de admin
-                supabase_admin = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_SERVICE_KEY"])
-                
-                # Cria o usuário
-                new_user = supabase_admin.auth.admin.create_user({
-                    "email": email,
-                    "email_confirm": True, # O usuário precisará confirmar o email
-                })
-                
-                # Atualiza o cargo do usuário recém-criado na tabela perfis
-                user_id = new_user.user.id
-                supabase.table('perfis').update({'cargo': cargo}).eq('id', user_id).execute()
+# CRIE ESTA FUNÇÃO NO SEU SQL EDITOR DO SUPABASE
+# CREATE OR REPLACE FUNCTION get_all_user_profiles()
+# RETURNS TABLE(id uuid, email text, nome_completo text, cargo text, status text) AS $$
+# BEGIN
+#     RETURN QUERY
+#     SELECT p.id, u.email, p.nome_completo, p.cargo, p.status
+#     FROM public.perfis p
+#     JOIN auth.users u ON p.id = u.id;
+# END;
+# $$ LANGUAGE plpgsql;
 
-                st.success(f"Convite enviado para {email} com o cargo de {cargo}!")
-            except Exception as e:
-                st.error(f"Erro ao convidar usuário: {e}")
+# --- Layout da Página ---
+st.title("👑 Gerenciamento de Usuários e Permissões")
+st.info("Nesta tela você pode ativar novos usuários e gerenciar os existentes.")
 
-with tab2:
-    st.subheader("Usuários Cadastrados")
-    df_perfis = get_all_profiles()
-    
-    if not df_perfis.empty:
-        # st.data_editor é ideal para isso
-        df_editado = st.data_editor(
-            df_perfis,
-            column_config={
-                "id": None, # Oculta ID
-                "cargo": st.column_config.SelectboxColumn(
-                    "Cargo",
-                    options=["Admin", "Operador"],
-                    required=True,
-                )
-            },
-            hide_index=True,
-            use_container_width=True
-        )
-        
-        if st.button("Salvar Alterações de Cargo"):
-            # Lógica para atualizar os cargos que foram alterados
-            for index, row in df_editado.iterrows():
-                original_row = df_perfis.iloc[index]
-                if row['cargo'] != original_row['cargo']:
-                    user_id = row['id']
-                    novo_cargo = row['cargo']
-                    supabase.table('perfis').update({'cargo': novo_cargo}).eq('id', user_id).execute()
-            
-            st.success("Cargos atualizados com sucesso!")
-            st.rerun()
+# Botão para recarregar os dados
+if st.button("Atualizar Lista de Usuários"):
+    st.cache_data.clear()
 
+df_perfis = get_all_profiles()
+
+if df_perfis.empty:
+    st.warning("Nenhum usuário encontrado.")
+else:
+    # --- Seção de Usuários Pendentes ---
+    st.subheader("Usuários Pendentes de Ativação")
+    df_pendentes = df_perfis[df_perfis['status'] == 'Pendente']
+
+    if not df_pendentes.empty:
+        for index, row in df_pendentes.iterrows():
+            col1, col2, col3 = st.columns([2, 2, 1])
+            with col1:
+                st.write(f"**Nome:** {row['nome_completo']}")
+            with col2:
+                st.write(f"**Email:** {row['email']}")
+            with col3:
+                if st.button("Ativar Usuário", key=f"ativar_{row['id']}", use_container_width=True):
+                    if update_user_status(row['id'], 'Ativo'):
+                        st.success(f"Usuário {row['nome_completo']} ativado!")
+                        st.rerun()
     else:
-        st.info("Nenhum perfil encontrado.")
+        st.success("Nenhum usuário pendente de ativação.")
+
+    # --- Seção de Usuários Ativos e Inativos ---
+    st.subheader("Gerenciar Usuários Ativos / Inativos")
+    df_gerenciamento = df_perfis[df_perfis['status'] != 'Pendente']
+    
+    if not df_gerenciamento.empty:
+        st.dataframe(df_gerenciamento, use_container_width=True, hide_index=True)
+        # Aqui você pode adicionar lógica para alterar cargo ou desativar usuários
+    else:
+        st.info("Nenhum usuário ativo ou inativo para gerenciar.")
