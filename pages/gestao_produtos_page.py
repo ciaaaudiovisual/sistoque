@@ -1,15 +1,18 @@
 import streamlit as st
 import pandas as pd
 import time
+# --- ADICIONADO ---
+from utils import init_connection, supabase_client_hash_func
+from supabase import Client
 
-@st.cache_data(ttl=60)
-def get_produtos():
-    """Busca todos os produtos. A conexão é obtida aqui dentro."""
-    supabase = init_connection() # Obtém a conexão dentro da função
-    response = supabase.table('produtos').select('*').order('nome').execute()
+# --- MODIFICADO ---
+@st.cache_data(ttl=60, hash_funcs={Client: supabase_client_hash_func})
+def get_produtos(supabase_client: Client):
+    """Busca todos os produtos usando a conexão fornecida."""
+    response = supabase_client.table('produtos').select('*').order('nome').execute()
     return pd.DataFrame(response.data)
 
-def render_page(supabase_client):
+def render_page(supabase_client: Client):
     """Renderiza a página de gestão de produtos."""
     st.title("📦 Gestão de Produtos")
 
@@ -19,6 +22,7 @@ def render_page(supabase_client):
     tab1, tab2 = st.tabs(["➕ Adicionar Novo Produto", "✏️ Visualizar e Editar"])
 
     with tab1:
+        # (O resto do código do formulário permanece o mesmo)
         st.subheader("Cadastrar Novo Produto")
         with st.form("add_produto", clear_on_submit=True):
             nome = st.text_input("Nome do Produto", placeholder="Ex: X-Burger")
@@ -52,13 +56,15 @@ def render_page(supabase_client):
                     else:
                         st.error(f"Erro ao cadastrar: {response.error.message}")
 
+
     with tab2:
         st.subheader("Todos os Produtos")
         
-        # --- CHAMADA DA FUNÇÃO CORRIGIDA ---
-        df_produtos = get_produtos() # A chamada agora não tem argumentos
+        # --- CHAMADA MODIFICADA ---
+        df_produtos = get_produtos(supabase_client)
 
         if not df_produtos.empty:
+            # (O resto do código de st.data_editor permanece o mesmo)
             df_editado = st.data_editor(
                 df_produtos,
                 column_config={
