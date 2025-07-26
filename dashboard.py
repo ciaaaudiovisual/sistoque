@@ -1,8 +1,9 @@
 import streamlit as st
 from supabase import create_client, Client
+import re # Importa a biblioteca de expressões regulares para validar email
 
 # --- Configuração e Conexão ---
-st.set_page_config(page_title="Login - Controle de Estoque", layout="centered")
+st.set_page_config(page_title="Acesso - Controle de Estoque", layout="centered")
 
 @st.cache_resource
 def init_connection():
@@ -12,49 +13,80 @@ def init_connection():
 
 supabase = init_connection()
 
-# --- Gerenciamento de Estado da Sessão ---
+# --- Gerenciamento de Estado ---
 if 'user' not in st.session_state:
     st.session_state.user = None
 if 'user_role' not in st.session_state:
     st.session_state.user_role = None
 
-# --- Funções de Autenticação ---
-def get_user_role(user_id):
-    response = supabase.table('perfis').select('cargo').eq('id', user_id).single().execute()
-    if response.data:
-        return response.data['cargo']
-    return None
-
-def login(email, password):
-    try:
-        session = supabase.auth.sign_in_with_password({"email": email, "password": password})
-        st.session_state.user = session.user
-        st.session_state.user_role = get_user_role(session.user.id)
-        st.rerun() # Recarrega a página para refletir o estado de login
-    except Exception as e:
-        st.error(f"Falha no login: Verifique seu e-mail e senha.")
+# --- Funções ---
+def get_user_profile(user_id):
+    response = supabase.table('perfis').select('cargo, status').eq('id', user_id).single().execute()
+    return response.data if response.data else None
 
 def logout():
     st.session_state.user = None
     st.session_state.user_role = None
     st.rerun()
 
-# --- Layout da Interface ---
-
-# Se o usuário não estiver logado, mostra a tela de login
+# --- Interface Principal ---
 if st.session_state.user is None:
     st.title("🍹 Controle de Estoque de Bebidas")
-    st.subheader("Por favor, faça o login para continuar")
+    
+    login_tab, signup_tab = st.tabs(["Entrar", "Cadastre-se"])
 
-    with st.form("login_form"):
-        email = st.text_input("Email")
-        password = st.text_input("Senha", type="password")
-        submitted = st.form_submit_button("Entrar")
-        if submitted:
-            login(email, password)
+    with login_tab:
+        st.subheader("Login")
+        with st.form("login_form"):
+            email = st.text_input("Email")
+            password = st.text_input("Senha", type="password")
+            submitted = st.form_submit_button("Entrar")
+            if submitted:
+                try:
+                    session = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                    profile = get_user_profile(session.user.id)
+                    
+                    if profile and profile['status'] == 'Ativo':
+                        st.session_state.user = session.user
+                        st.session_state.user_role = profile['cargo']
+                        st.rerun()
+                    elif profile and profile['status'] == 'Pendente':
+                        st.warning("Sua conta está aguardando aprovação de um administrador.")
+                    else:
+                        st.error("Conta inativa ou não encontrada. Contate o suporte.")
+                except Exception:
+                    st.error("Falha no login. Verifique seu e-mail e senha.")
 
-# Se o usuário estiver logado, mostra a interface principal
+    with signup_tab:
+        st.subheader("Criar Nova Conta")
+        with st.form("signup_form", clear_on_submit=True):
+            nome_completo = st.text_input("Nome Completo")
+            email = st.text_input("Email de Cadastro")
+            password = st.text_input("Crie uma Senha", type="password")
+            
+            submitted = st.form_submit_button("Registrar")
+            if submitted:
+                if not nome_completo or not email or not password:
+                    st.error("Por favor, preencha todos os campos.")
+                elif not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+                     st.error("Formato de e-mail inválido.")
+                else:
+                    try:
+                        # Cadastra o usuário no Supabase Auth
+                        new_user = supabase.auth.sign_up({
+                            "email": email,
+                            "password": password,
+                            "options": {
+                                "data": {
+                                    'nome_completo': nome_completo
+                                }
+                            }
+                        })
+                        st.success("Cadastro realizado! Sua conta está aguardando aprovação do administrador. Você receberá um email para confirmar sua conta.")
+                    except Exception as e:
+                        st.error(f"Erro no cadastro: {e}")
 else:
+    # --- Interface Pós-Login ---
     st.sidebar.subheader(f"Bem-vindo(a)!")
     st.sidebar.write(f"Cargo: **{st.session_state.user_role}**")
     if st.sidebar.button("Sair", use_container_width=True):
@@ -62,9 +94,3 @@ else:
 
     st.title("🏠 Dashboard Principal")
     st.write("Selecione uma opção no menu à esquerda para começar.")
-    
-    # Mensagem de boas-vindas baseada no cargo
-    if st.session_state.user_role == 'Admin':
-        st.info("Você está logado como Administrador e tem acesso a todas as funcionalidades, incluindo o gerenciamento de usuários.", icon="👑")
-    else:
-        st.info("Você está logado como Operador. Seu acesso é focado na movimentação e consulta de estoque.", icon="👤")
