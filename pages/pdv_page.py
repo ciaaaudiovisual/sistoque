@@ -1,11 +1,9 @@
 # pages/pdv_page.py
 import streamlit as st
 from streamlit_card import card
-# --- MODIFICADO ---
 from utils import supabase_client_hash_func
 from supabase import Client
 
-# --- CORRECTED FUNCTION ---
 @st.cache_data(ttl=60, hash_funcs={Client: supabase_client_hash_func})
 def get_produtos_pdv(supabase_client: Client):
     """Busca produtos com estoque positivo usando a conexão fornecida."""
@@ -31,7 +29,7 @@ def finalizar_venda(supabase_client, carrinho):
         st.cache_data.clear() # Limpa o cache para atualizar a lista de produtos
         st.rerun()
 
-def render_page(supabase_client):
+def render_page(supabase_client: Client):
     """Renderiza a página completa do Ponto de Venda."""
     st.title("🛒 Ponto de Venda (PDV)")
 
@@ -45,8 +43,9 @@ def render_page(supabase_client):
         if st.button("🔄 Recarregar Produtos"):
             st.cache_data.clear()
         
-        # --- CORRECTED FUNCTION CALL ---
-        produtos = get_produtos_pdv() # A chamada agora não tem argumentos
+        # --- CORREÇÃO APLICADA AQUI ---
+        # A função agora recebe o 'supabase_client' como argumento.
+        produtos = get_produtos_pdv(supabase_client)
         
         num_cols = 4
         cols = st.columns(num_cols)
@@ -56,7 +55,6 @@ def render_page(supabase_client):
         
         for i, produto in enumerate(produtos):
             with cols[i % num_cols]:
-                # The 'key' parameter ensures each card is unique for Streamlit
                 c = card(
                     key=f"card_{produto['id']}",
                     title=f"R$ {produto['preco_venda']:.2f}",
