@@ -98,19 +98,34 @@ def render_page(supabase_client: Client):
             if len(data_selecionada) == 2:
                 try:
                     # --- CORREÇÃO APLICADA AQUI ---
-                    # Converte as datas do filtro para datetime "naive" (sem fuso horário)
-                    start_date = pd.to_datetime(data_selecionada[0])
-                    end_date = pd.to_datetime(data_selecionada[1]).replace(hour=23, minute=59, second=59)
+                    # Converte as datas do filtro para o mesmo fuso horário (UTC) dos dados do banco.
+                    start_date = pd.to_datetime(data_selecionada[0]).tz_localize('UTC')
+                    end_date = pd.to_datetime(data_selecionada[1]).replace(hour=23, minute=59, second=59).tz_localize('UTC')
                     
-                    # Remove a informação de fuso horário da coluna do DataFrame APENAS para a comparação
+                    # A comparação agora é feita entre datas com o mesmo fuso horário.
                     df_filtrado = df_filtrado[
-                        (df_filtrado['data_movimentacao'].dt.tz_localize(None) >= start_date) & 
-                        (df_filtrado['data_movimentacao'].dt.tz_localize(None) <= end_date)
+                        (df_filtrado['data_movimentacao'] >= start_date) & 
+                        (df_filtrado['data_movimentacao'] <= end_date)
                     ]
                 except Exception as e:
                     st.error(f"Ocorreu um erro ao filtrar as datas: {e}")
 
-            st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
+            # --- MELHORIA NA EXIBIÇÃO ---
+            # Converte a data para o fuso horário de Brasília e formata.
+            df_display = df_filtrado.copy()
+            df_display['data_local'] = df_display['data_movimentacao'].dt.tz_convert('America/Sao_Paulo')
+            df_display['data_formatada'] = df_display['data_local'].dt.strftime('%d/%m/%Y %H:%M:%S')
+
+            st.dataframe(
+                df_display.rename(columns={
+                    'data_formatada': 'Data e Hora (Brasília)',
+                    'produto_nome': 'Produto',
+                    'tipo_movimentacao': 'Tipo',
+                    'quantidade': 'Qtd.'
+                })[['Data e Hora (Brasília)', 'Produto', 'Tipo', 'Qtd.']],
+                use_container_width=True,
+                hide_index=True
+            )
 
     with tab3:
         st.subheader("Análise de Lucro Potencial")
@@ -131,3 +146,4 @@ def render_page(supabase_client: Client):
         )
 
         st.bar_chart(df_lucro.set_index('nome')['lucro_potencial_total'])
+
