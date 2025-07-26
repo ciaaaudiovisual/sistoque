@@ -9,6 +9,10 @@ if 'user' not in st.session_state or st.session_state.user is None:
     st.page_link("dashboard.py", label="Ir para a página de Login", icon="🏠")
     st.stop() # Interrompe a execução
 # --- Configuração e Conexão ---
+
+if st.session_state.user_role != 'Admin':
+    st.error("🚫 Acesso negado. Apenas Administradores podem visualizar os relatórios.")
+    st.stop()
 st.set_page_config(page_title="Relatórios", layout="wide")
 
 @st.cache_resource
