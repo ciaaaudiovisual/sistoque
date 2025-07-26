@@ -3,9 +3,10 @@ import pandas as pd
 import time
 
 @st.cache_data(ttl=60)
-def get_produtos(supabase_client):
-    """Busca todos os produtos do banco de dados."""
-    response = supabase_client.table('produtos').select('*').order('nome').execute()
+def get_produtos():
+    """Busca todos os produtos. A conexão é obtida aqui dentro."""
+    supabase = init_connection() # Obtém a conexão dentro da função
+    response = supabase.table('produtos').select('*').order('nome').execute()
     return pd.DataFrame(response.data)
 
 def render_page(supabase_client):
@@ -53,7 +54,9 @@ def render_page(supabase_client):
 
     with tab2:
         st.subheader("Todos os Produtos")
-        df_produtos = get_produtos(supabase_client)
+        
+        # --- CHAMADA DA FUNÇÃO CORRIGIDA ---
+        df_produtos = get_produtos() # A chamada agora não tem argumentos
 
         if not df_produtos.empty:
             df_editado = st.data_editor(
@@ -65,7 +68,7 @@ def render_page(supabase_client):
                     "estoque_atual": st.column_config.NumberColumn("Estoque Atual"),
                     "qtd_minima_estoque": st.column_config.NumberColumn("Estoque Mínimo"),
                 },
-                hide_index=True, use_container_width=True, num_rows="dynamic"
+                hide_index=True, use_container_width=True, num_rows="dynamic", key="editor_produtos"
             )
             
             if st.button("Salvar Alterações"):
