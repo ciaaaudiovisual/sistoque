@@ -1,19 +1,21 @@
 import streamlit as st
 import pandas as pd
-from utils import init_connection
+# --- MODIFICADO ---
+from utils import supabase_client_hash_func
+from supabase import Client
 
-@st.cache_data(ttl=60)
-def get_relatorio_estoque():
-    """Busca dados do estoque. A conexão é obtida aqui dentro."""
-    supabase = init_connection()
-    response = supabase.table('produtos').select('nome, tipo, estoque_atual, qtd_minima_estoque, preco_venda, preco_compra').order('nome').execute()
+# --- MODIFICADO ---
+@st.cache_data(ttl=60, hash_funcs={Client: supabase_client_hash_func})
+def get_relatorio_estoque(supabase_client: Client):
+    """Busca dados do estoque usando a conexão fornecida."""
+    response = supabase_client.table('produtos').select('nome, tipo, estoque_atual, qtd_minima_estoque, preco_venda, preco_compra').order('nome').execute()
     return pd.DataFrame(response.data)
 
-@st.cache_data(ttl=60)
-def get_relatorio_movimentacoes():
-    """Busca o histórico de movimentações. A conexão é obtida aqui dentro."""
-    supabase = init_connection()
-    response = supabase.table('movimentacoes').select('*, produtos(nome)').order('data_movimentacao', desc=True).limit(1000).execute()
+# --- MODIFICADO ---
+@st.cache_data(ttl=60, hash_funcs={Client: supabase_client_hash_func})
+def get_relatorio_movimentacoes(supabase_client: Client):
+    """Busca o histórico de movimentações usando a conexão fornecida."""
+    response = supabase_client.table('movimentacoes').select('*, produtos(nome)').order('data_movimentacao', desc=True).limit(1000).execute()
     df = pd.json_normalize(response.data)
     if not df.empty:
         df = df.rename(columns={'produtos.nome': 'produto_nome'})
