@@ -1,36 +1,32 @@
 # pages/movimentacao_page.py
-import streamlit as st
-# --- MODIFICADO ---
-from utils import supabase_client_hash_func
-from supabase import Client
 
-# --- FUNÇÃO CORRIGIDA ---
+import streamlit as st
+from supabase import Client
+from utils import supabase_client_hash_func # Importa a função de hash
+
 @st.cache_data(ttl=60, hash_funcs={Client: supabase_client_hash_func})
 def get_lista_produtos(supabase_client: Client):
     """Busca a lista de produtos usando a conexão fornecida."""
     response = supabase_client.table('produtos').select('id, nome').order('nome').execute()
     return response.data
 
-# (A função registrar_movimentacao já estava correta, não precisa mudar)
-def registrar_movimentacao(supabase_client, id_produto, tipo, quantidade):
-    # ...
+def registrar_movimentacao(supabase_client: Client, id_produto: int, tipo: str, quantidade: int):
+    """Registra a movimentação e atualiza o estoque via RPC."""
+    response = supabase_client.rpc('atualizar_estoque', {
+        'produto_id': id_produto, 'quantidade_movimentada': quantidade, 'tipo_mov': tipo
+    }).execute()
+    
+    resultado = response.data
+    if resultado == 'Sucesso':
+        return True, "Movimentação registrada com sucesso!"
+    else:
+        return False, resultado
 
 def render_page(supabase_client: Client):
     """Renderiza a página de movimentação de estoque."""
     st.title("🚚 Movimentação de Estoque")
 
-    # --- CHAMADA DA FUNÇÃO CORRIGIDA ---
     lista_produtos = get_lista_produtos(supabase_client)
-    
-    # (O resto da função render_page permanece o mesmo)
-    # ...
-
-def render_page(supabase_client):
-    """Renderiza a página de movimentação de estoque."""
-    st.title("🚚 Movimentação de Estoque")
-
-    # --- CHAMADA DA FUNÇÃO CORRIGIDA ---
-    lista_produtos = get_lista_produtos() # A chamada agora não tem argumentos
     
     produtos_dict = {produto['nome']: produto['id'] for produto in lista_produtos}
 
