@@ -5,8 +5,8 @@ import traceback
 
 class PontoDeVendaApp:
     """
-    Classe para encapsular a nova lógica da página do Ponto de Venda (PDV)
-    com um layout mais compacto e profissional.
+    Classe para encapsular a lógica da página do Ponto de Venda (PDV)
+    com um layout compacto e profissional.
     """
     def __init__(self, supabase_client: Client):
         if not isinstance(supabase_client, Client):
@@ -62,12 +62,16 @@ class PontoDeVendaApp:
         else:
             st.success("Venda registada com sucesso!")
             st.session_state.pdv_carrinho = {}
+            
+            # --- CORREÇÃO APLICADA AQUI ---
+            # Limpa o cache de dados de toda a aplicação para que os relatórios sejam atualizados.
+            st.cache_data.clear()
+            
             st.rerun()
 
     def _renderizar_catalogo(self):
         st.subheader("Adicionar Produtos")
 
-        # --- NOVO: Barra de pesquisa ---
         st.text_input(
             "Pesquisar produto por nome", 
             key="pdv_search_query",
@@ -84,7 +88,6 @@ class PontoDeVendaApp:
             st.error(f"Não foi possível carregar os produtos do catálogo: {e}")
             return
 
-        # --- NOVO: Filtrar produtos com base na pesquisa ---
         if query:
             produtos_filtrados = [
                 p for p in produtos if query.lower() in p['nome'].lower()
@@ -96,10 +99,8 @@ class PontoDeVendaApp:
             st.info("Nenhum produto encontrado.")
             return
 
-        # --- NOVO: Layout em lista compacta ---
         list_container = st.container(height=400, border=False)
         with list_container:
-            # Cabeçalho da lista
             c1, c2, c3 = st.columns([4, 2, 1.5])
             c1.markdown("**Produto**")
             c2.markdown("**Preço**")
@@ -130,7 +131,6 @@ class PontoDeVendaApp:
             st.info("O carrinho está vazio.")
             return
 
-        # --- NOVO: Layout do carrinho mais limpo ---
         cart_container = st.container(height=350, border=False)
         with cart_container:
             total_venda = 0
