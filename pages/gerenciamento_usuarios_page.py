@@ -1,8 +1,12 @@
 import streamlit as st
 import pandas as pd
+# --- ADICIONADO ---
+from utils import supabase_client_hash_func
+from supabase import Client
 
-@st.cache_data(ttl=60)
-def get_all_profiles(supabase_client):
+# --- MODIFICADO ---
+@st.cache_data(ttl=60, hash_funcs={Client: supabase_client_hash_func})
+def get_all_profiles(supabase_client: Client):
     response = supabase_client.rpc('get_all_user_profiles').execute()
     return pd.DataFrame(response.data)
 
