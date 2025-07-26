@@ -2,20 +2,6 @@
 import streamlit as st
 from supabase import Client
 
-# A função de cache foi completamente removida para garantir estabilidade.
-def get_produtos_pdv(supabase_client: Client):
-    """Busca produtos com estoque positivo usando a conexão fornecida."""
-    # Verificação para garantir que a função não é chamada sem a conexão.
-    if not supabase_client:
-        st.error("Erro interno: a função de busca de produtos foi chamada sem uma conexão válida.")
-        return []
-    try:
-        response = supabase_client.table('produtos').select('id, nome, preco_venda, foto_url, estoque_atual').gt('estoque_atual', 0).order('nome').execute()
-        return response.data
-    except Exception as e:
-        st.error(f"Não foi possível carregar os produtos: {e}")
-        return []
-
 def finalizar_venda(supabase_client: Client, carrinho: dict):
     """Processa a finalização da venda, dando baixa no estoque."""
     erros = []
@@ -51,7 +37,6 @@ def render_page(supabase_client: Client):
     """Renderiza a página completa do Ponto de Venda."""
     st.title("🛒 Ponto de Venda (PDV)")
 
-    # Verificação principal para garantir que a página recebeu a conexão.
     if not supabase_client:
         st.error("A página do PDV não recebeu a conexão com o banco de dados do painel principal.")
         st.stop()
@@ -66,8 +51,17 @@ def render_page(supabase_client: Client):
         if st.button("🔄 Recarregar Produtos"):
             st.rerun()
         
-        produtos = get_produtos_pdv(supabase_client)
-        
+        # --- CORREÇÃO DEFINITIVA: LÓGICA DE BUSCA MOVIDA PARA CÁ ---
+        # A função get_produtos_pdv foi removida e seu código inserido aqui
+        # para evitar qualquer interferência do cache do Streamlit.
+        produtos = []
+        try:
+            response = supabase_client.table('produtos').select('id, nome, preco_venda, foto_url, estoque_atual').gt('estoque_atual', 0).order('nome').execute()
+            produtos = response.data
+        except Exception as e:
+            st.error(f"Não foi possível carregar os produtos: {e}")
+        # --- FIM DA LÓGICA MOVIDA ---
+
         num_cols = 4
         cols = st.columns(num_cols)
         
