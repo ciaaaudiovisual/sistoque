@@ -1,15 +1,16 @@
-# pages/1_📦_Gestão_de_Produtos.py
+# pages/gestao_produtos.py
 import streamlit as st
 from supabase import create_client
 import pandas as pd
 import time
 
+# --- Verificação de Login ---
 if 'user' not in st.session_state or st.session_state.user is None:
     st.error("🔒 Por favor, faça o login para acessar esta página.")
     st.page_link("dashboard.py", label="Ir para a página de Login", icon="🏠")
-    st.stop() # Interrompe a execução
+    st.stop()
 
-# Conexão (pode ser movida para um módulo separado depois)
+# --- Conexão ---
 @st.cache_resource
 def init_connection():
     url = st.secrets["SUPABASE_URL"]
@@ -18,8 +19,19 @@ def init_connection():
 
 supabase = init_connection()
 
-st.title("Gestão de Produtos (Bebidas)")
+st.title("📦 Gestão de Produtos (Bebidas)")
 
+# Botão para recarregar os dados do cache
+if st.button("Recarregar Dados"):
+    st.cache_data.clear()
+
+# --- Funções ---
+@st.cache_data
+def get_produtos():
+    response = supabase.table('produtos').select('*').order('nome').execute()
+    return pd.DataFrame(response.data)
+
+# --- Layout ---
 tab1, tab2 = st.tabs(["➕ Adicionar Novo Produto", "✏️ Visualizar e Editar"])
 
 with tab1:
@@ -41,13 +53,10 @@ with tab1:
             else:
                 foto_url = None
                 if foto_produto:
-                    # Upload da foto para o Supabase Storage
                     file_path = f"{nome.replace(' ', '_').lower()}_{int(time.time())}.{foto_produto.name.split('.')[-1]}"
                     supabase.storage.from_("fotos_produtos").upload(file_path, foto_produto.getvalue())
-                    # Obter a URL pública
                     foto_url = supabase.storage.from_("fotos_produtos").get_public_url(file_path)
 
-                # Inserir dados no banco
                 novo_produto = {
                     "nome": nome,
                     "tipo": tipo,
@@ -60,21 +69,19 @@ with tab1:
                 
                 if response.data:
                     st.success("Produto cadastrado com sucesso!")
+                    st.cache_data.clear() # Limpa o cache para a lista ser atualizada
                 else:
                     st.error(f"Erro ao cadastrar: {response.error.message}")
 
 with tab2:
     st.subheader("Todos os Produtos")
-    # Busca os dados
-    response = supabase.table('produtos').select('*').order('nome').execute()
-    df_produtos = pd.DataFrame(response.data)
+    df_produtos = get_produtos()
 
     if not df_produtos.empty:
-        # Usando st.data_editor para permitir edições
         df_editado = st.data_editor(
             df_produtos,
             column_config={
-                "id": None, # Oculta a coluna ID
+                "id": None,
                 "foto_url": st.column_config.ImageColumn("Foto", help="URL da imagem do produto"),
                 "preco_compra": st.column_config.NumberColumn("Preço Compra", format="R$ %.2f"),
                 "preco_venda": st.column_config.NumberColumn("Preço Venda", format="R$ %.2f"),
@@ -83,15 +90,28 @@ with tab2:
             },
             hide_index=True,
             use_container_width=True,
-            num_rows="dynamic" # Permite deletar linhas
+            num_rows="dynamic"
         )
         
-        # Lógica para salvar as alterações (simplificada)
         if st.button("Salvar Alterações"):
-            # Aqui você implementaria a lógica para comparar df_produtos com df_editado
-            # e chamar supabase.table('produtos').update({...}).eq('id', ...).execute()
-            # ou supabase.table('produtos').delete().eq('id', ...).execute()
-            st.info("Funcionalidade de salvar em desenvolvimento!")
+            with st.spinner("Salvando..."):
+                # Converte os dataframes para dicionários para facilitar a comparação
+                originais = df_produtos.set_index('id').to_dict('index')
+                editados = df_editado.set_index('id').to_dict('index')
 
+                # Itera sobre os produtos editados para encontrar modificações
+                for prod_id, prod_data in editados.items():
+                    if prod_id in originais and prod_data != originais[prod_id]:
+                        supabase.table('produtos').update(prod_data).eq('id', prod_id).execute()
+
+                # Verifica se algum produto foi deletado
+                ids_deletados = set(originais.keys()) - set(editados.keys())
+                if ids_deletados:
+                    for prod_id in ids_deletados:
+                        supabase.table('produtos').delete().eq('id', prod_id).execute()
+                
+                st.success("Alterações salvas com sucesso!")
+                st.cache_data.clear()
+                st.rerun()
     else:
         st.info("Nenhum produto cadastrado ainda.")
