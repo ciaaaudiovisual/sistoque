@@ -3,7 +3,7 @@ from streamlit_option_menu import option_menu
 import re
 import pandas as pd
 from datetime import datetime, timedelta
-import pytz # Importa a biblioteca de fuso horário
+import pytz  # Importa a biblioteca de fuso horário
 
 from utils import init_connection
 from pages import gestao_produtos_page, gerenciamento_usuarios_page, movimentacao_page, pdv_page, relatorios_page
@@ -35,7 +35,6 @@ def main():
 
     # --- TELA DE LOGIN ---
     if st.session_state.user is None:
-        # (Código de login permanece o mesmo)
         st.markdown("""<style>[data-testid="stSidebar"] {display: none;}</style>""", unsafe_allow_html=True)
         st.title("📦 Sistoque | Controle de Estoque e Vendas")
         login_tab, signup_tab = st.tabs(["Entrar", "Cadastre-se"])
@@ -111,7 +110,7 @@ def main():
         # --- KPIs (Indicadores Chave de Performance) ---
         st.subheader("Indicadores Chave")
         
-        # Converte a validade para datetime
+        # Converte a validade para datetime, tratando erros
         df_produtos['data_validade'] = pd.to_datetime(df_produtos['data_validade'], errors='coerce')
         
         # Define o fuso horário de Brasília
@@ -121,10 +120,12 @@ def main():
         # Cálculos dos KPIs
         valor_estoque = (df_produtos['estoque_atual'] * df_produtos['preco_venda']).sum()
         itens_baixo_estoque = df_produtos[df_produtos['estoque_atual'] <= df_produtos['qtd_minima_estoque']].shape[0]
-        itens_vencendo = df_produtos[
-            (df_produtos['data_validade'].notna()) &
-            (df_produtos['data_validade'].dt.date >= hoje) &
-            (df_produtos['data_validade'].dt.date <= hoje + timedelta(days=30))
+        
+        # Lógica de cálculo de itens vencendo mais robusta
+        df_com_validade = df_produtos[df_produtos['data_validade'].notna()]
+        itens_vencendo = df_com_validade[
+            (df_com_validade['data_validade'].dt.date >= hoje) &
+            (df_com_validade['data_validade'].dt.date <= hoje + timedelta(days=30))
         ].shape[0]
         
         col1, col2, col3 = st.columns(3)
@@ -138,18 +139,26 @@ def main():
         c1, c2 = st.columns(2)
         with c1:
             st.subheader("Top 5 Produtos com Mais Estoque")
-            top_estoque = df_produtos.nlargest(5, 'estoque_atual')
-            st.bar_chart(top_estoque.set_index('nome')['estoque_atual'])
+            if not df_produtos.empty:
+                top_estoque = df_produtos.nlargest(5, 'estoque_atual')
+                st.bar_chart(top_estoque.set_index('nome')['estoque_atual'])
 
         with c2:
             st.subheader("Produtos Próximos do Vencimento")
-            df_vencendo = df_produtos[df_produtos['data_validade'].notna()].copy()
-            df_vencendo['dias_para_vencer'] = (df_vencendo['data_validade'].dt.date - hoje).dt.days
-            df_vencendo_proximo = df_vencendo[df_vencendo['dias_para_vencer'] >= 0].nsmallest(5, 'dias_para_vencer')
-            st.dataframe(
-                df_vencendo_proximo[['nome', 'dias_para_vencer']].rename(columns={'nome': 'Produto', 'dias_para_vencer': 'Dias para Vencer'}),
-                hide_index=True, use_container_width=True
-            )
+            if not df_com_validade.empty:
+                df_vencendo = df_com_validade.copy()
+                df_vencendo['dias_para_vencer'] = (df_vencendo['data_validade'].dt.date - hoje).dt.days
+                df_vencendo_proximo = df_vencendo[df_vencendo['dias_para_vencer'] >= 0].nsmallest(5, 'dias_para_vencer')
+                
+                if not df_vencendo_proximo.empty:
+                    st.dataframe(
+                        df_vencendo_proximo[['nome', 'dias_para_vencer']].rename(columns={'nome': 'Produto', 'dias_para_vencer': 'Dias para Vencer'}),
+                        hide_index=True, use_container_width=True
+                    )
+                else:
+                    st.info("Nenhum produto a vencer nos próximos dias.")
+            else:
+                st.info("Nenhum produto com data de validade cadastrada.")
 
     elif selected == "PDV":
         pdv_page.render_page(supabase)
