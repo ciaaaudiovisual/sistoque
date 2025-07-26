@@ -2,6 +2,8 @@ import streamlit as st
 from supabase import create_client
 import pandas as pd
 
+
+
 if 'user' not in st.session_state or st.session_state.user is None:
     st.error("🔒 Por favor, faça o login para acessar esta página.")
     st.page_link("dashboard.py", label="Ir para a página de Login", icon="🏠")
