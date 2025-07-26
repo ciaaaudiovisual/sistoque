@@ -3,23 +3,16 @@ import streamlit as st
 from supabase import Client
 import traceback
 
-# A abordagem foi reestruturada usando uma classe para gerir o estado e as ações,
-# tornando o código mais robusto contra problemas de cache do Streamlit.
-
 class PontoDeVendaApp:
     """
     Classe para encapsular toda a lógica da página do Ponto de Venda (PDV).
     """
     def __init__(self, supabase_client: Client):
-        """Inicializa a aplicação do PDV com a conexão do Supabase."""
         if not isinstance(supabase_client, Client):
-            st.error("Erro Crítico: A página do PDV não recebeu uma conexão válida.")
-            # Lança uma exceção para interromper a execução se a conexão for inválida.
             raise TypeError("O cliente Supabase fornecido é inválido.")
         
         self.supabase = supabase_client
         
-        # Garante que o carrinho de compras existe no estado da sessão.
         if 'pdv_carrinho' not in st.session_state:
             st.session_state.pdv_carrinho = {}
 
@@ -27,7 +20,6 @@ class PontoDeVendaApp:
         """Adiciona um item ao carrinho ou incrementa a sua quantidade."""
         id_produto = produto['id']
         carrinho = st.session_state.pdv_carrinho
-
         if id_produto in carrinho:
             carrinho[id_produto]['quantidade'] += 1
         else:
@@ -36,19 +28,19 @@ class PontoDeVendaApp:
                 "quantidade": 1,
                 "preco_unitario": produto['preco_venda']
             }
-        st.rerun()
+        # A chamada st.rerun() foi removida daqui para uma interação mais suave.
+        # O próprio on_click do botão já aciona a atualização.
 
     def _remover_do_carrinho(self, id_produto: int):
         """Remove um item do carrinho."""
         if id_produto in st.session_state.pdv_carrinho:
             del st.session_state.pdv_carrinho[id_produto]
-            st.rerun()
 
-    def _atualizar_quantidade(self, id_produto: int, nova_quantidade: int):
-        """Atualiza a quantidade de um item específico no carrinho."""
+    def _atualizar_quantidade(self, id_produto: int):
+        """Callback para atualizar a quantidade a partir do st.number_input."""
+        nova_quantidade = st.session_state[f"qtd_{id_produto}"]
         if id_produto in st.session_state.pdv_carrinho:
             st.session_state.pdv_carrinho[id_produto]['quantidade'] = nova_quantidade
-            st.rerun()
 
     def _finalizar_venda(self):
         """Processa a venda, regista as movimentações e limpa o carrinho."""
@@ -57,17 +49,16 @@ class PontoDeVendaApp:
         with st.spinner("A processar a Venda..."):
             for item_id, item_data in carrinho.items():
                 try:
-                    # Chama a função RPC 'atualizar_estoque' para cada item.
                     response = self.supabase.rpc('atualizar_estoque', {
-                        'produto_id': item_id, 
-                        'quantidade_movimentada': item_data['quantidade'], 
-                        'tipo_mov': 'SAÍDA'
+                        'p_produto_id': item_id, 
+                        'p_quantidade_movimentada': item_data['quantidade'], 
+                        'p_tipo_mov': 'SAÍDA'
                     }).execute()
-                    # Verifica se a RPC retornou um erro.
                     if response.data != 'Sucesso':
                         erros.append(f"Produto {item_data['nome']}: {response.data}")
                 except Exception as e:
-                    erros.append(f"Produto {item_data['nome']}: Erro de comunicação com o banco de dados.")
+                    # --- CORREÇÃO: Mostra o erro real vindo do Supabase ---
+                    erros.append(f"Produto {item_data['nome']}: Erro de comunicação - {e}")
         
         if erros:
             st.error("A venda não pôde ser completada:\n- " + "\n- ".join(erros))
@@ -83,14 +74,12 @@ class PontoDeVendaApp:
             st.rerun()
 
         try:
-            # A busca de dados é feita diretamente aqui, sem funções externas em cache.
             response = self.supabase.table('produtos').select(
                 'id, nome, preco_venda, foto_url, estoque_atual'
             ).gt('estoque_atual', 0).order('nome').execute()
             produtos = response.data
         except Exception as e:
-            st.error("Não foi possível carregar os produtos do catálogo.")
-            st.code(traceback.format_exc()) # Mostra o erro detalhado para depuração.
+            st.error(f"Não foi possível carregar os produtos do catálogo: {e}")
             return
 
         if not produtos:
@@ -106,10 +95,8 @@ class PontoDeVendaApp:
                     st.subheader(f"{produto['nome']}")
                     st.write(f"**R$ {produto['preco_venda']:.2f}**")
                     st.button(
-                        "Adicionar",
-                        key=f"add_{produto['id']}",
-                        on_click=self._adicionar_ao_carrinho,
-                        args=(produto,),
+                        "Adicionar", key=f"add_{produto['id']}",
+                        on_click=self._adicionar_ao_carrinho, args=(produto,),
                         use_container_width=True
                     )
     
@@ -131,19 +118,23 @@ class PontoDeVendaApp:
             with c1:
                 st.write(f"**{item_data['nome']}** (R$ {subtotal:.2f})")
             with c2:
-                nova_qtd = st.number_input(
-                    "Qtd.", min_value=1, value=item_data['quantidade'], 
-                    key=f"qtd_{item_id}", label_visibility="collapsed"
+                # --- CORREÇÃO: Usando on_change para uma atualização mais suave ---
+                st.number_input(
+                    "Qtd.", min_value=1,
+                    key=f"qtd_{item_id}",
+                    value=item_data['quantidade'],
+                    on_change=self._atualizar_quantidade,
+                    args=(item_id,),
+                    label_visibility="collapsed"
                 )
-                if nova_qtd != item_data['quantidade']:
-                    self._atualizar_quantidade(item_id, nova_qtd)
             with c3:
-                st.button("❌", key=f"del_{item_id}", help="Remover item", on_click=self._remover_do_carrinho, args=(item_id,))
+                st.button("❌", key=f"del_{item_id}", help="Remover item", 
+                          on_click=self._remover_do_carrinho, args=(item_id,))
         
         st.divider()
         st.metric("TOTAL DA VENDA", f"R$ {total_venda:.2f}")
 
-        if st.button("💳 Finalizar Venda", use_container_width=True, type="primary"):
+        if st.button("💳 Finalizar Venda", use_container_width=True, type="primary", disabled=(not carrinho)):
             self._finalizar_venda()
 
     def render(self):
@@ -153,20 +144,13 @@ class PontoDeVendaApp:
 
         with col_produtos:
             self._renderizar_catalogo()
-
         with col_carrinho:
             self._renderizar_carrinho()
 
-
-# Esta é a única função que o dashboard.py irá chamar.
-# Ela cria uma instância da nossa aplicação e a executa.
 def render_page(supabase_client: Client):
     try:
         app = PontoDeVendaApp(supabase_client)
         app.render()
-    except TypeError as e:
-        st.error(f"Erro ao inicializar a página do PDV: {e}")
     except Exception as e:
-        st.error("Ocorreu um erro inesperado na página do PDV.")
+        st.error("Ocorreu um erro crítico na página do PDV.")
         st.code(traceback.format_exc())
-
