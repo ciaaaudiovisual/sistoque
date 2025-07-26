@@ -94,11 +94,23 @@ else:
             options=["Dashboard", "PDV", "Produtos", "Movimentação", "Relatórios", "Usuários"],
             icons=["house", "cart4", "box-seam", "truck", "bar-chart-line", "people"],
             orientation="horizontal",
+            # --- CORREÇÃO DE ESTILO APLICADA AQUI ---
             styles={
                 "container": {"padding": "0!important", "background-color": "#fafafa", "border-radius": "10px"},
-                "icon": {"color": "#636E72", "font-size": "20px"},
-                "nav-link": {"font-size": "16px", "text-align": "center", "margin":"0px", "--hover-color": "#eee"},
-                "nav-link-selected": {"background-color": "#02ab21", "color": "white"},
+                "icon": {"color": "#4F4F4F", "font-size": "20px"},
+                "nav-link": {
+                    "font-size": "16px",
+                    "text-align": "center",
+                    "margin": "0px",
+                    "--hover-color": "#E0E0E0",
+                    "color": "#333333", # Cor do texto para itens não selecionados
+                    "border-right": "1px solid #BDBDBD", # Borda para separar os itens
+                },
+                "nav-link-selected": {
+                    "background-color": "#27AE60", # Verde um pouco diferente
+                    "color": "white",
+                    "font-weight": "bold",
+                },
             }
         )
     
