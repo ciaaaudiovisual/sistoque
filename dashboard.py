@@ -1,8 +1,6 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 import re
-
-# Importa as funções de renderização de cada página e a conexão
 from utils import init_connection
 from pages import gestao_produtos_page, gerenciamento_usuarios_page, movimentacao_page, pdv_page, relatorios_page
 
