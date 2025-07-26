@@ -5,14 +5,17 @@ import pandas as pd
 from datetime import datetime, timedelta
 import pytz  # Importa a biblioteca de fuso horário
 
-from utils import init_connection
+# --- CORREÇÃO: Importações necessárias para a função de cache ---
+from supabase import Client
+from utils import init_connection, supabase_client_hash_func
 from pages import gestao_produtos_page, gerenciamento_usuarios_page, movimentacao_page, pdv_page, relatorios_page
 
 st.set_page_config(page_title="Sistoque | Sistema de Gestão", layout="wide")
 
 # --- FUNÇÕES DE DADOS PARA O DASHBOARD ---
-@st.cache_data(ttl=60)
-def get_dashboard_data(supabase):
+# --- CORREÇÃO: Adicionado o hash_funcs para o cliente Supabase ---
+@st.cache_data(ttl=60, hash_funcs={Client: supabase_client_hash_func})
+def get_dashboard_data(supabase: Client):
     """Busca os dados necessários para o dashboard."""
     produtos_response = supabase.table('produtos').select('*').execute()
     movimentacoes_response = supabase.table('movimentacoes').select('*').eq('tipo_movimentacao', 'SAÍDA').execute()
@@ -110,18 +113,14 @@ def main():
         # --- KPIs (Indicadores Chave de Performance) ---
         st.subheader("Indicadores Chave")
         
-        # Converte a validade para datetime, tratando erros
         df_produtos['data_validade'] = pd.to_datetime(df_produtos['data_validade'], errors='coerce')
         
-        # Define o fuso horário de Brasília
         brasilia_tz = pytz.timezone("America/Sao_Paulo")
         hoje = datetime.now(brasilia_tz).date()
 
-        # Cálculos dos KPIs
         valor_estoque = (df_produtos['estoque_atual'] * df_produtos['preco_venda']).sum()
         itens_baixo_estoque = df_produtos[df_produtos['estoque_atual'] <= df_produtos['qtd_minima_estoque']].shape[0]
         
-        # Lógica de cálculo de itens vencendo mais robusta
         df_com_validade = df_produtos[df_produtos['data_validade'].notna()]
         itens_vencendo = df_com_validade[
             (df_com_validade['data_validade'].dt.date >= hoje) &
