@@ -1,12 +1,19 @@
+# pages/pdv_page.py
+
 import streamlit as st
 from streamlit_card import card
+from utils import init_connection # Import the connection utility
 
+# --- CORRECTED FUNCTION ---
 @st.cache_data(ttl=60)
-def get_produtos_pdv(supabase_client):
-    response = supabase_client.table('produtos').select('id, nome, preco_venda, foto_url, estoque_atual').gt('estoque_atual', 0).order('nome').execute()
+def get_produtos_pdv():
+    """Busca produtos com estoque positivo. A conexão é obtida aqui dentro."""
+    supabase = init_connection() # Get the connection inside the cached function
+    response = supabase.table('produtos').select('id, nome, preco_venda, foto_url, estoque_atual').gt('estoque_atual', 0).order('nome').execute()
     return response.data
 
 def finalizar_venda(supabase_client, carrinho):
+    """Processa a finalização da venda, dando baixa no estoque."""
     erros = []
     with st.spinner("Processando Venda..."):
         for item_id, item_data in carrinho.items():
@@ -21,10 +28,11 @@ def finalizar_venda(supabase_client, carrinho):
     else:
         st.success("Venda registrada com sucesso!")
         st.session_state.carrinho = {}
-        st.cache_data.clear()
+        st.cache_data.clear() # Limpa o cache para atualizar a lista de produtos
         st.rerun()
 
 def render_page(supabase_client):
+    """Renderiza a página completa do Ponto de Venda."""
     st.title("🛒 Ponto de Venda (PDV)")
 
     if 'carrinho' not in st.session_state:
@@ -37,20 +45,28 @@ def render_page(supabase_client):
         if st.button("🔄 Recarregar Produtos"):
             st.cache_data.clear()
         
-        produtos = get_produtos_pdv(supabase_client)
+        # --- CORRECTED FUNCTION CALL ---
+        produtos = get_produtos_pdv() # A chamada agora não tem argumentos
+        
         num_cols = 4
         cols = st.columns(num_cols)
         
+        if not produtos:
+            st.warning("Nenhum produto com estoque disponível encontrado.")
+        
         for i, produto in enumerate(produtos):
             with cols[i % num_cols]:
+                # The 'key' parameter ensures each card is unique for Streamlit
                 c = card(
-                    title=f"R$ {produto['preco_venda']:.2f}", text=produto['nome'],
+                    key=f"card_{produto['id']}",
+                    title=f"R$ {produto['preco_venda']:.2f}",
+                    text=produto['nome'],
                     image=produto['foto_url'] or "https://placehold.co/300x200?text=Sem+Imagem",
                     styles={
                         "card": {"width": "100%", "margin": "10px", "box-shadow": "0 4px 8px 0 rgba(0,0,0,0.2)"},
                         "title": {"font-size": "18px", "font-weight": "bold"}, "text": {"font-size": "14px"}
                     },
-                    on_click=lambda p=produto: p # Retorna o dicionario do produto ao clicar
+                    on_click=lambda p=produto: p
                 )
                 if c:
                     if c['id'] in st.session_state.carrinho:
