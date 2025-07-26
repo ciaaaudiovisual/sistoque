@@ -1,25 +1,23 @@
 import streamlit as st
-from supabase import create_client, Client
-import re # Importa a biblioteca de expressões regulares para validar email
+from streamlit_option_menu import option_menu
+import re
 
-# --- Configuração e Conexão ---
-st.set_page_config(page_title="Acesso - Controle de Estoque", layout="centered")
+# Importa as funções de renderização de cada página e a conexão
+from utils import init_connection
+from pages import gestao_produtos_page, gerenciamento_usuarios_page, movimentacao_page, pdv_page, relatorios_page
 
-@st.cache_resource
-def init_connection():
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
+st.set_page_config(page_title="Sistema de Estoque", layout="wide")
 
+# Inicializa o cliente Supabase
 supabase = init_connection()
 
-# --- Gerenciamento de Estado ---
+# --- Gerenciamento de Estado da Sessão ---
 if 'user' not in st.session_state:
     st.session_state.user = None
 if 'user_role' not in st.session_state:
     st.session_state.user_role = None
 
-# --- Funções ---
+# --- Funções de Autenticação ---
 def get_user_profile(user_id):
     response = supabase.table('perfis').select('cargo, status').eq('id', user_id).single().execute()
     return response.data if response.data else None
@@ -29,14 +27,22 @@ def logout():
     st.session_state.user_role = None
     st.rerun()
 
-# --- Interface Principal ---
+# --- TELA DE LOGIN ---
 if st.session_state.user is None:
-    st.title("🍹 Controle de Estoque de Bebidas")
+    # Esconde o menu lateral padrão do Streamlit
+    st.markdown("""
+        <style>
+            [data-testid="stSidebar"] {
+                display: none;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    st.title("📦 Sistema de Controle de Estoque e Vendas")
     
     login_tab, signup_tab = st.tabs(["Entrar", "Cadastre-se"])
 
     with login_tab:
-        st.subheader("Login")
         with st.form("login_form"):
             email = st.text_input("Email")
             password = st.text_input("Senha", type="password")
@@ -53,12 +59,11 @@ if st.session_state.user is None:
                     elif profile and profile['status'] == 'Pendente':
                         st.warning("Sua conta está aguardando aprovação de um administrador.")
                     else:
-                        st.error("Conta inativa ou não encontrada. Contate o suporte.")
+                        st.error("Conta inativa ou não confirmada. Verifique seu e-mail (incluindo spam).")
                 except Exception:
                     st.error("Falha no login. Verifique seu e-mail e senha.")
 
     with signup_tab:
-        st.subheader("Criar Nova Conta")
         with st.form("signup_form", clear_on_submit=True):
             nome_completo = st.text_input("Nome Completo")
             email = st.text_input("Email de Cadastro")
@@ -72,25 +77,60 @@ if st.session_state.user is None:
                      st.error("Formato de e-mail inválido.")
                 else:
                     try:
-                        # Cadastra o usuário no Supabase Auth
                         new_user = supabase.auth.sign_up({
-                            "email": email,
-                            "password": password,
-                            "options": {
-                                "data": {
-                                    'nome_completo': nome_completo
-                                }
-                            }
+                            "email": email, "password": password,
+                            "options": {"data": {'nome_completo': nome_completo}}
                         })
-                        st.success("Cadastro realizado! Sua conta está aguardando aprovação do administrador. Você receberá um email para confirmar sua conta.")
+                        st.success("Cadastro realizado! Verifique seu e-mail para confirmação. Sua conta aguarda aprovação do administrador.")
                     except Exception as e:
                         st.error(f"Erro no cadastro: {e}")
 else:
-    # --- Interface Pós-Login ---
-    st.sidebar.subheader(f"Bem-vindo(a)!")
+    # --- APLICATIVO PRINCIPAL PÓS-LOGIN ---
+    
+    # Menu Superior
+    with st.container():
+        selected = option_menu(
+            menu_title=None,
+            options=["Dashboard", "PDV", "Produtos", "Movimentação", "Relatórios", "Usuários"],
+            icons=["house", "cart4", "box-seam", "truck", "bar-chart-line", "people"],
+            orientation="horizontal",
+            styles={
+                "container": {"padding": "0!important", "background-color": "#fafafa", "border-radius": "10px"},
+                "icon": {"color": "#636E72", "font-size": "20px"},
+                "nav-link": {"font-size": "16px", "text-align": "center", "margin":"0px", "--hover-color": "#eee"},
+                "nav-link-selected": {"background-color": "#02ab21", "color": "white"},
+            }
+        )
+    
+    # Botão de Sair posicionado elegantemente
+    st.sidebar.subheader(f"Bem-vindo(a), {st.session_state.user.user_metadata.get('nome_completo', '')}!")
     st.sidebar.write(f"Cargo: **{st.session_state.user_role}**")
-    if st.sidebar.button("Sair", use_container_width=True):
+    if st.sidebar.button("Sair (Logout)", use_container_width=True):
         logout()
 
-    st.title("🏠 Dashboard Principal")
-    st.write("Selecione uma opção no menu à esquerda para começar.")
+    # Renderiza a página selecionada no menu
+    if selected == "Dashboard":
+        st.title("📈 Dashboard Principal")
+        st.write("Visão geral do seu negócio.")
+        # Adicione aqui seus KPIs e gráficos
+        
+    if selected == "PDV":
+        pdv_page.render_page(supabase)
+    
+    if selected == "Produtos":
+        gestao_produtos_page.render_page(supabase)
+
+    if selected == "Movimentação":
+        movimentacao_page.render_page(supabase)
+
+    if selected == "Relatórios":
+        if st.session_state.user_role == 'Admin':
+            relatorios_page.render_page(supabase)
+        else:
+            st.error("🚫 Acesso restrito a Administradores.")
+    
+    if selected == "Usuários":
+        if st.session_state.user_role == 'Admin':
+            gerenciamento_usuarios_page.render_page(supabase)
+        else:
+            st.error("🚫 Acesso restrito a Administradores.")
