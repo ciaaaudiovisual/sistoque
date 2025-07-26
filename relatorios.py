@@ -23,10 +23,9 @@ def init_connection():
 
 supabase = init_connection()
 
-# --- Funções do Banco de Dados ---
 def get_relatorio_estoque():
-    # Usando uma View ou RPC para buscar o nome do produto junto com a movimentação seria mais eficiente
-    response = supabase.table('produtos').select('nome, tipo, estoque_atual, qtd_minima_estoque, preco_venda').order('nome').execute()
+    # Adicione 'preco_compra' à lista de colunas selecionadas
+    response = supabase.table('produtos').select('nome, tipo, estoque_atual, qtd_minima_estoque, preco_venda, preco_compra').order('nome').execute()
     return pd.DataFrame(response.data)
 
 def get_relatorio_movimentacoes():
