@@ -1,6 +1,6 @@
 # pages/pdv_page.py
 import streamlit as st
-from streamlit_card import card
+# A biblioteca 'streamlit_card' foi removida para maior estabilidade.
 from utils import supabase_client_hash_func
 from supabase import Client
 
@@ -26,8 +26,22 @@ def finalizar_venda(supabase_client, carrinho):
     else:
         st.success("Venda registrada com sucesso!")
         st.session_state.carrinho = {}
-        st.cache_data.clear() # Limpa o cache para atualizar a lista de produtos
+        st.cache_data.clear()
         st.rerun()
+
+# --- CORREÇÃO: Função para adicionar ao carrinho ---
+# Esta função é chamada quando o botão "Adicionar" de um produto é clicado.
+def adicionar_ao_carrinho(produto):
+    """Adiciona um produto ao carrinho no estado da sessão."""
+    id_produto = produto['id']
+    if id_produto in st.session_state.carrinho:
+        st.session_state.carrinho[id_produto]['quantidade'] += 1
+    else:
+        st.session_state.carrinho[id_produto] = {
+            "nome": produto['nome'],
+            "quantidade": 1,
+            "preco_unitario": produto['preco_venda']
+        }
 
 def render_page(supabase_client: Client):
     """Renderiza a página completa do Ponto de Venda."""
@@ -42,9 +56,8 @@ def render_page(supabase_client: Client):
         st.subheader("Catálogo de Produtos")
         if st.button("🔄 Recarregar Produtos"):
             st.cache_data.clear()
+            st.rerun()
         
-        # --- CORREÇÃO APLICADA AQUI ---
-        # A função agora recebe o 'supabase_client' como argumento.
         produtos = get_produtos_pdv(supabase_client)
         
         num_cols = 4
@@ -53,27 +66,21 @@ def render_page(supabase_client: Client):
         if not produtos:
             st.warning("Nenhum produto com estoque disponível encontrado.")
         
+        # --- CORREÇÃO: Lógica de exibição refeita com componentes nativos ---
         for i, produto in enumerate(produtos):
             with cols[i % num_cols]:
-                c = card(
-                    key=f"card_{produto['id']}",
-                    title=f"R$ {produto['preco_venda']:.2f}",
-                    text=produto['nome'],
-                    image=produto['foto_url'] or "https://placehold.co/300x200?text=Sem+Imagem",
-                    styles={
-                        "card": {"width": "100%", "margin": "10px", "box-shadow": "0 4px 8px 0 rgba(0,0,0,0.2)"},
-                        "title": {"font-size": "18px", "font-weight": "bold"}, "text": {"font-size": "14px"}
-                    },
-                    on_click=lambda p=produto: p
-                )
-                if c:
-                    if c['id'] in st.session_state.carrinho:
-                        st.session_state.carrinho[c['id']]['quantidade'] += 1
-                    else:
-                        st.session_state.carrinho[c['id']] = {
-                            "nome": c['nome'], "quantidade": 1, "preco_unitario": c['preco_venda']
-                        }
-                    st.rerun()
+                # Usando st.container com uma borda para criar um "card"
+                with st.container(border=True):
+                    st.image(produto['foto_url'] or "https://placehold.co/300x200?text=Sem+Imagem")
+                    st.subheader(f"{produto['nome']}")
+                    st.write(f"**R$ {produto['preco_venda']:.2f}**")
+                    st.button(
+                        "Adicionar",
+                        key=f"add_{produto['id']}",
+                        on_click=adicionar_ao_carrinho,
+                        args=(produto,), # Passa o dicionário do produto para a função
+                        use_container_width=True
+                    )
 
     with col_carrinho:
         st.subheader("Carrinho de Compras")
@@ -103,5 +110,5 @@ def render_page(supabase_client: Client):
             st.divider()
             st.metric("TOTAL DA VENDA", f"R$ {total_venda:.2f}")
 
-            if st.button("💳 Finalizar Venda", use_container_width=True, type="primary"):
+            if st.button("💳 Finalizar Venda", use_container_width=True, type="primary", disabled=(not st.session_state.carrinho)):
                 finalizar_venda(supabase_client, st.session_state.carrinho)
