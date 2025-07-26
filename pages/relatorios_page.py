@@ -26,7 +26,7 @@ def get_relatorios_data(supabase_client: Client):
         df_movimentacoes = pd.json_normalize(movimentacoes_response.data)
         if 'produtos.nome' in df_movimentacoes.columns:
             df_movimentacoes = df_movimentacoes.rename(columns={'produtos.nome': 'produto_nome'})
-        # Converte a coluna de data para o tipo datetime
+        # Converte a coluna de data para o tipo datetime com fuso horário (timezone-aware)
         df_movimentacoes['data_movimentacao'] = pd.to_datetime(df_movimentacoes['data_movimentacao'])
 
     return df_estoque, df_movimentacoes
@@ -45,13 +45,11 @@ def render_page(supabase_client: Client):
         st.warning("Não há dados de produtos para exibir. Cadastre produtos primeiro.")
         return
 
-    # --- ABA DE ESTOQUE ---
     tab1, tab2, tab3 = st.tabs(["📈 Resumo do Estoque", "📜 Histórico de Movimentações", "💰 Análise de Lucro"])
 
     with tab1:
         st.subheader("Visão Geral do Estoque")
         
-        # Métricas principais
         total_itens = df_estoque['estoque_atual'].sum()
         valor_estoque_venda = (df_estoque['estoque_atual'] * df_estoque['preco_venda']).sum()
         produtos_baixo_estoque = df_estoque[df_estoque['estoque_atual'] <= df_estoque['qtd_minima_estoque']].shape[0]
@@ -64,10 +62,8 @@ def render_page(supabase_client: Client):
         st.divider()
 
         st.subheader("Detalhes dos Produtos")
-        # Explicação sobre a "tabela de estoque"
         st.info("Esta é a sua 'tabela de estoque'. A coluna `estoque_atual` é atualizada automaticamente a cada entrada ou saída.", icon="ℹ️")
         
-        # Formatação da tabela para melhor visualização
         df_display_estoque = df_estoque.rename(columns={
             'nome': 'Produto', 'tipo': 'Categoria', 'estoque_atual': 'Estoque',
             'qtd_minima_estoque': 'Estoque Mínimo', 'preco_venda': 'Preço Venda (R$)',
@@ -81,13 +77,11 @@ def render_page(supabase_client: Client):
         if df_movimentacoes.empty:
             st.info("Nenhuma movimentação registrada ainda.")
         else:
-            # Filtros
             col_filter1, col_filter2 = st.columns(2)
             with col_filter1:
                 produtos_disponiveis = sorted(df_movimentacoes['produto_nome'].unique())
                 produto_selecionado = st.multiselect("Filtrar por Produto", options=produtos_disponiveis)
             with col_filter2:
-                # O valor padrão é dos últimos 30 dias
                 min_date = df_movimentacoes['data_movimentacao'].min().date()
                 max_date = df_movimentacoes['data_movimentacao'].max().date()
                 data_selecionada = st.date_input(
@@ -97,17 +91,24 @@ def render_page(supabase_client: Client):
                     max_value=max_date
                 )
 
-            # Aplicação dos filtros
             df_filtrado = df_movimentacoes.copy()
             if produto_selecionado:
                 df_filtrado = df_filtrado[df_filtrado['produto_nome'].isin(produto_selecionado)]
+            
+            # --- CORREÇÃO APLICADA AQUI ---
+            # Garante que a comparação de datas seja feita com fusos horários compatíveis.
             if len(data_selecionada) == 2:
-                start_date = pd.to_datetime(data_selecionada[0])
-                end_date = pd.to_datetime(data_selecionada[1]).replace(hour=23, minute=59, second=59)
-                df_filtrado = df_filtrado[
-                    (df_filtrado['data_movimentacao'] >= start_date) & 
-                    (df_filtrado['data_movimentacao'] <= end_date)
-                ]
+                try:
+                    # Converte as datas do filtro para o mesmo fuso horário (UTC) dos dados do banco.
+                    start_date = pd.to_datetime(data_selecionada[0]).tz_localize('UTC')
+                    end_date = pd.to_datetime(data_selecionada[1]).replace(hour=23, minute=59, second=59).tz_localize('UTC')
+                    
+                    df_filtrado = df_filtrado[
+                        (df_filtrado['data_movimentacao'] >= start_date) & 
+                        (df_filtrado['data_movimentacao'] <= end_date)
+                    ]
+                except Exception as e:
+                    st.error(f"Ocorreu um erro ao filtrar as datas: {e}")
 
             st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
 
