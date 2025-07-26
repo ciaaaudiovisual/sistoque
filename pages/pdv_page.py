@@ -1,16 +1,22 @@
 # pages/pdv_page.py
 import streamlit as st
-# A biblioteca 'streamlit_card' foi removida para maior estabilidade.
-from utils import supabase_client_hash_func
 from supabase import Client
 
-#@st.cache_data(ttl=60, hash_funcs={Client: supabase_client_hash_func})
+# A função de cache foi completamente removida para garantir estabilidade.
 def get_produtos_pdv(supabase_client: Client):
     """Busca produtos com estoque positivo usando a conexão fornecida."""
-    response = supabase_client.table('produtos').select('id, nome, preco_venda, foto_url, estoque_atual').gt('estoque_atual', 0).order('nome').execute()
-    return response.data
+    # Verificação para garantir que a função não é chamada sem a conexão.
+    if not supabase_client:
+        st.error("Erro interno: a função de busca de produtos foi chamada sem uma conexão válida.")
+        return []
+    try:
+        response = supabase_client.table('produtos').select('id, nome, preco_venda, foto_url, estoque_atual').gt('estoque_atual', 0).order('nome').execute()
+        return response.data
+    except Exception as e:
+        st.error(f"Não foi possível carregar os produtos: {e}")
+        return []
 
-def finalizar_venda(supabase_client, carrinho):
+def finalizar_venda(supabase_client: Client, carrinho: dict):
     """Processa a finalização da venda, dando baixa no estoque."""
     erros = []
     with st.spinner("Processando Venda..."):
@@ -26,12 +32,9 @@ def finalizar_venda(supabase_client, carrinho):
     else:
         st.success("Venda registrada com sucesso!")
         st.session_state.carrinho = {}
-        st.cache_data.clear()
         st.rerun()
 
-# --- CORREÇÃO: Função para adicionar ao carrinho ---
-# Esta função é chamada quando o botão "Adicionar" de um produto é clicado.
-def adicionar_ao_carrinho(produto):
+def adicionar_ao_carrinho(produto: dict):
     """Adiciona um produto ao carrinho no estado da sessão."""
     id_produto = produto['id']
     if id_produto in st.session_state.carrinho:
@@ -42,10 +45,16 @@ def adicionar_ao_carrinho(produto):
             "quantidade": 1,
             "preco_unitario": produto['preco_venda']
         }
+    st.rerun()
 
 def render_page(supabase_client: Client):
     """Renderiza a página completa do Ponto de Venda."""
     st.title("🛒 Ponto de Venda (PDV)")
+
+    # Verificação principal para garantir que a página recebeu a conexão.
+    if not supabase_client:
+        st.error("A página do PDV não recebeu a conexão com o banco de dados do painel principal.")
+        st.stop()
 
     if 'carrinho' not in st.session_state:
         st.session_state.carrinho = {}
@@ -55,7 +64,6 @@ def render_page(supabase_client: Client):
     with col_produtos:
         st.subheader("Catálogo de Produtos")
         if st.button("🔄 Recarregar Produtos"):
-            st.cache_data.clear()
             st.rerun()
         
         produtos = get_produtos_pdv(supabase_client)
@@ -66,10 +74,8 @@ def render_page(supabase_client: Client):
         if not produtos:
             st.warning("Nenhum produto com estoque disponível encontrado.")
         
-        # --- CORREÇÃO: Lógica de exibição refeita com componentes nativos ---
         for i, produto in enumerate(produtos):
             with cols[i % num_cols]:
-                # Usando st.container com uma borda para criar um "card"
                 with st.container(border=True):
                     st.image(produto['foto_url'] or "https://placehold.co/300x200?text=Sem+Imagem")
                     st.subheader(f"{produto['nome']}")
@@ -78,7 +84,7 @@ def render_page(supabase_client: Client):
                         "Adicionar",
                         key=f"add_{produto['id']}",
                         on_click=adicionar_ao_carrinho,
-                        args=(produto,), # Passa o dicionário do produto para a função
+                        args=(produto,),
                         use_container_width=True
                     )
 
