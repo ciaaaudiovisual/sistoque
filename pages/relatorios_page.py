@@ -95,17 +95,17 @@ def render_page(supabase_client: Client):
             if produto_selecionado:
                 df_filtrado = df_filtrado[df_filtrado['produto_nome'].isin(produto_selecionado)]
             
-            # --- CORREÇÃO APLICADA AQUI ---
-            # Garante que a comparação de datas seja feita com fusos horários compatíveis.
             if len(data_selecionada) == 2:
                 try:
-                    # Converte as datas do filtro para o mesmo fuso horário (UTC) dos dados do banco.
-                    start_date = pd.to_datetime(data_selecionada[0]).tz_localize('UTC')
-                    end_date = pd.to_datetime(data_selecionada[1]).replace(hour=23, minute=59, second=59).tz_localize('UTC')
+                    # --- CORREÇÃO APLICADA AQUI ---
+                    # Converte as datas do filtro para datetime "naive" (sem fuso horário)
+                    start_date = pd.to_datetime(data_selecionada[0])
+                    end_date = pd.to_datetime(data_selecionada[1]).replace(hour=23, minute=59, second=59)
                     
+                    # Remove a informação de fuso horário da coluna do DataFrame APENAS para a comparação
                     df_filtrado = df_filtrado[
-                        (df_filtrado['data_movimentacao'] >= start_date) & 
-                        (df_filtrado['data_movimentacao'] <= end_date)
+                        (df_filtrado['data_movimentacao'].dt.tz_localize(None) >= start_date) & 
+                        (df_filtrado['data_movimentacao'].dt.tz_localize(None) <= end_date)
                     ]
                 except Exception as e:
                     st.error(f"Ocorreu um erro ao filtrar as datas: {e}")
