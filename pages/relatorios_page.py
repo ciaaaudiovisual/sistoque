@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 from supabase import Client
 from utils import supabase_client_hash_func
-from datetime import datetime
+import pytz # Biblioteca para lidar com fusos horários de forma robusta
 
 @st.cache_data(ttl=30, hash_funcs={Client: supabase_client_hash_func})
 def get_relatorios_data(supabase_client: Client):
@@ -77,13 +77,23 @@ def render_page(supabase_client: Client):
         if df_movimentacoes.empty:
             st.info("Nenhuma movimentação registrada ainda.")
         else:
+            # --- LÓGICA DE DATA REESTRUTURADA ---
+            
+            # 1. Converte a data UTC do banco para o fuso horário de Brasília
+            brasilia_tz = pytz.timezone("America/Sao_Paulo")
+            df_movimentacoes['data_local'] = df_movimentacoes['data_movimentacao'].dt.tz_convert(brasilia_tz)
+
+            # 2. Cria uma coluna separada apenas com a DATA (sem hora/fuso) para o filtro
+            df_movimentacoes['data_filtro'] = df_movimentacoes['data_local'].dt.date
+
+            # Filtros
             col_filter1, col_filter2 = st.columns(2)
             with col_filter1:
                 produtos_disponiveis = sorted(df_movimentacoes['produto_nome'].unique())
                 produto_selecionado = st.multiselect("Filtrar por Produto", options=produtos_disponiveis)
             with col_filter2:
-                min_date = df_movimentacoes['data_movimentacao'].min().date()
-                max_date = df_movimentacoes['data_movimentacao'].max().date()
+                min_date = df_movimentacoes['data_filtro'].min()
+                max_date = df_movimentacoes['data_filtro'].max()
                 data_selecionada = st.date_input(
                     "Filtrar por Período",
                     value=(min_date, max_date),
@@ -91,29 +101,22 @@ def render_page(supabase_client: Client):
                     max_value=max_date
                 )
 
+            # Aplicação dos filtros
             df_filtrado = df_movimentacoes.copy()
             if produto_selecionado:
                 df_filtrado = df_filtrado[df_filtrado['produto_nome'].isin(produto_selecionado)]
             
+            # 3. Compara o filtro com a coluna de data simples
             if len(data_selecionada) == 2:
-                try:
-                    # --- CORREÇÃO APLICADA AQUI ---
-                    # Converte as datas do filtro para o mesmo fuso horário (UTC) dos dados do banco.
-                    start_date = pd.to_datetime(data_selecionada[0]).tz_localize('UTC')
-                    end_date = pd.to_datetime(data_selecionada[1]).replace(hour=23, minute=59, second=59).tz_localize('UTC')
-                    
-                    # A comparação agora é feita entre datas com o mesmo fuso horário.
-                    df_filtrado = df_filtrado[
-                        (df_filtrado['data_movimentacao'] >= start_date) & 
-                        (df_filtrado['data_movimentacao'] <= end_date)
-                    ]
-                except Exception as e:
-                    st.error(f"Ocorreu um erro ao filtrar as datas: {e}")
+                start_date = data_selecionada[0]
+                end_date = data_selecionada[1]
+                df_filtrado = df_filtrado[
+                    (df_filtrado['data_filtro'] >= start_date) & 
+                    (df_filtrado['data_filtro'] <= end_date)
+                ]
 
-            # --- MELHORIA NA EXIBIÇÃO ---
-            # Converte a data para o fuso horário de Brasília e formata.
+            # 4. Formata a data local (com hora de Brasília) para exibição
             df_display = df_filtrado.copy()
-            df_display['data_local'] = df_display['data_movimentacao'].dt.tz_convert('America/Sao_Paulo')
             df_display['data_formatada'] = df_display['data_local'].dt.strftime('%d/%m/%Y %H:%M:%S')
 
             st.dataframe(
@@ -146,4 +149,3 @@ def render_page(supabase_client: Client):
         )
 
         st.bar_chart(df_lucro.set_index('nome')['lucro_potencial_total'])
-
