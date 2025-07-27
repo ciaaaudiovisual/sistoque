@@ -104,10 +104,11 @@ def render_page(supabase_client: Client):
                         if prod_id in originais and prod_data != originais[prod_id]:
                             supabase_client.table('produtos').update(prod_data).eq('id', prod_id).execute()
 
-                    ids_deletados = set(originais.keys()) - set(editados.keys())
+                   ids_deletados = set(originais.keys()) - set(editados.keys())
                     if ids_deletados:
                         for prod_id in ids_deletados:
-                            supabase_client.table('produtos').delete().eq('id', prod_id).execute()
+                            # Em vez de deletar, atualizamos o status para 'Inativo'
+                            supabase_client.table('produtos').update({'status': 'Inativo'}).eq('id', prod_id).execute()
                     
                     st.success("Alterações salvas com sucesso!")
                     st.cache_data.clear()
