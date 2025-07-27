@@ -111,7 +111,7 @@ def render_page(supabase_client: Client):
                         # --- 3. BOTÃO QUE ABRE O POP-UP DE EDIÇÃO ---
                         if st.button("✏️ Editar", key=f"edit_{produto['id']}", use_container_width=True):
                             # O st.dialog cria o pop-up
-                            with st.dialog(f"Editando: {produto['nome']}", a):
+                            with st.dialog(f"Editando: {produto['nome']}", ):
                                 with st.form(key=f"form_edit_{produto['id']}"):
                                     st.subheader("Informações do Produto")
                                     
