@@ -147,59 +147,59 @@ def render_page(supabase_client: Client):
                         st.markdown(f"<span style='background-color: {cor_status}; color: white; padding: 3px 8px; border-radius: 15px; font-size: 12px;'>{texto_status}</span>", unsafe_allow_html=True)
 
                     with col3:
-                        if st.button("✏️ Editar", key=f"edit_{produto['id']}", use_container_width=True):
-                            with st.dialog(f"Editando: {produto['nome']}"):
-                                with st.form(key=f"form_edit_{produto['id']}"):
-                                    st.subheader("Informações do Produto")
-                                    
-                                    novo_nome = st.text_input("Nome do Produto", value=produto['nome'])
-                                    novo_tipo = st.text_input("Tipo/Categoria", value=produto.get('tipo', ''))
-                                    novo_codigo_barras = st.text_input("Código de Barras", value=produto.get('codigo_barras', ''))
-                                    
-                                    data_validade_atual = pd.to_datetime(produto.get('data_validade')).date() if pd.notna(produto.get('data_validade')) else None
-                                    nova_data_validade = st.date_input("Data de Validade", value=data_validade_atual)
-                                    
-                                    st.subheader("Valores e Status")
-                                    col_form1, col_form2 = st.columns(2)
-                                    with col_form1:
-                                        novo_preco_venda = st.number_input("Preço de Venda (R$)", value=float(produto['preco_venda']), format="%.2f")
-                                        novo_preco_compra = st.number_input("Preço de Compra (R$)", value=float(produto['preco_compra']), format="%.2f")
-                                    with col_form2:
-                                        novo_status = st.selectbox("Status", options=['Ativo', 'Inativo'], index=['Ativo', 'Inativo'].index(produto.get('status', 'Ativo')))
-                                        st.metric("Estoque Atual", produto['estoque_atual'])
-                                    
-                                    st.subheader("Foto")
-                                    nova_foto = st.file_uploader("Trocar Foto do Produto", type=['png', 'jpg', 'jpeg'])
+                        # O st.expander é usado aqui como alternativa ao st.dialog
+                        with st.expander("✏️ Editar"):
+                            with st.form(key=f"form_edit_{produto['id']}"):
+                                st.subheader("Informações do Produto")
+                                
+                                novo_nome = st.text_input("Nome do Produto", value=produto['nome'], key=f"nome_{produto['id']}")
+                                novo_tipo = st.text_input("Tipo/Categoria", value=produto.get('tipo', ''), key=f"tipo_{produto['id']}")
+                                novo_codigo_barras = st.text_input("Código de Barras", value=produto.get('codigo_barras', ''), key=f"cod_{produto['id']}")
+                                
+                                data_validade_atual = pd.to_datetime(produto.get('data_validade')).date() if pd.notna(produto.get('data_validade')) else None
+                                nova_data_validade = st.date_input("Data de Validade", value=data_validade_atual, key=f"val_{produto['id']}")
+                                
+                                st.subheader("Valores e Status")
+                                col_form1, col_form2 = st.columns(2)
+                                with col_form1:
+                                    novo_preco_venda = st.number_input("Preço de Venda (R$)", value=float(produto['preco_venda']), format="%.2f", key=f"pv_{produto['id']}")
+                                    novo_preco_compra = st.number_input("Preço de Compra (R$)", value=float(produto['preco_compra']), format="%.2f", key=f"pc_{produto['id']}")
+                                with col_form2:
+                                    novo_status = st.selectbox("Status", options=['Ativo', 'Inativo'], index=['Ativo', 'Inativo'].index(produto.get('status', 'Ativo')), key=f"stat_{produto['id']}")
+                                    st.metric("Estoque Atual", produto['estoque_atual'])
+                                
+                                st.subheader("Foto")
+                                nova_foto = st.file_uploader("Trocar Foto do Produto", type=['png', 'jpg', 'jpeg'], key=f"foto_{produto['id']}")
 
-                                    if st.form_submit_button("✅ Salvar Alterações", use_container_width=True, type="primary"):
-                                        with st.spinner("Salvando..."):
-                                            update_data = {
-                                                'nome': novo_nome,
-                                                'tipo': novo_tipo,
-                                                'codigo_barras': novo_codigo_barras,
-                                                'data_validade': str(nova_data_validade) if nova_data_validade else None,
-                                                'preco_venda': novo_preco_venda,
-                                                'preco_compra': novo_preco_compra,
-                                                'status': novo_status
-                                            }
+                                if st.form_submit_button("✅ Salvar Alterações", use_container_width=True, type="primary"):
+                                    with st.spinner("Salvando..."):
+                                        update_data = {
+                                            'nome': novo_nome,
+                                            'tipo': novo_tipo,
+                                            'codigo_barras': novo_codigo_barras,
+                                            'data_validade': str(nova_data_validade) if nova_data_validade else None,
+                                            'preco_venda': novo_preco_venda,
+                                            'preco_compra': novo_preco_compra,
+                                            'status': novo_status
+                                        }
 
-                                            if nova_foto:
-                                                try:
-                                                    file_path = f"{novo_nome.replace(' ', '_').lower()}_{int(time.time())}.{nova_foto.name.split('.')[-1]}"
-                                                    supabase_client.storage.from_("fotos_produtos").upload(file_path, nova_foto.getvalue(), file_options={"cache-control": "3600", "upsert": "true"})
-                                                    foto_url = supabase_client.storage.from_("fotos_produtos").get_public_url(file_path)
-                                                    update_data['foto_url'] = foto_url
-                                                except Exception as e:
-                                                    st.error(f"Erro no upload da nova foto: {e}")
-                                            
-                                            response = supabase_client.table('produtos').update(update_data).eq('id', produto['id']).execute()
+                                        if nova_foto:
+                                            try:
+                                                file_path = f"{novo_nome.replace(' ', '_').lower()}_{int(time.time())}.{nova_foto.name.split('.')[-1]}"
+                                                supabase_client.storage.from_("fotos_produtos").upload(file_path, nova_foto.getvalue(), file_options={"cache-control": "3600", "upsert": "true"})
+                                                foto_url = supabase_client.storage.from_("fotos_produtos").get_public_url(file_path)
+                                                update_data['foto_url'] = foto_url
+                                            except Exception as e:
+                                                st.error(f"Erro no upload da nova foto: {e}")
+                                        
+                                        response = supabase_client.table('produtos').update(update_data).eq('id', produto['id']).execute()
 
-                                            if not response.data:
-                                                st.error(f"Erro ao atualizar: {response.error.message if response.error else 'Verifique as permissões'}")
-                                            else:
-                                                st.success("Produto atualizado com sucesso!")
-                                                st.cache_data.clear()
-                                                st.rerun()
+                                        if not response.data:
+                                            st.error(f"Erro ao atualizar: {response.error.message if response.error else 'Verifique as permissões'}")
+                                        else:
+                                            st.success("Produto atualizado com sucesso!")
+                                            st.cache_data.clear()
+                                            st.rerun()
 
     with tab_bulk:
         st.subheader("Importação e Atualização em Massa via CSV")
