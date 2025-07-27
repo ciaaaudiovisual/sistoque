@@ -172,9 +172,21 @@ class PontoDeVendaApp:
         with st.container(height=600):
             for produto in produtos_filtrados:
                 cols = st.columns([3, 1, 1.2])
-                with cols[0]: st.write(f"**{produto['nome']}**")
-                with cols[1]: st.write(f"R$ {produto['preco_venda']:.2f}")
-                with cols[2]: st.button("Adicionar ＋", key=f"add_list_{produto['id']}", on_click=self._adicionar_ao_carrinho, args=(produto,), use_container_width=True)
+                with cols[0]:
+                    # Estilo CSS para não quebrar a linha do nome do produto
+                    st.markdown(f"""
+                    <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-top: 8px" title="{produto['nome']}">
+                        <strong>{produto['nome']}</strong>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with cols[1]:
+                    st.write(f"R$ {produto['preco_venda']:.2f}")
+                with cols[2]:
+                    # Condição para mostrar o botão correto baseado no estoque
+                    if produto.get('estoque_atual', 0) > 0:
+                        st.button("Adicionar ＋", key=f"add_list_{produto['id']}", on_click=self._adicionar_ao_carrinho, args=(produto,), use_container_width=True, type="primary")
+                    else:
+                        st.button("Fora de Estoque", key=f"add_list_{produto['id']}", use_container_width=True, disabled=True)
                 st.divider()
     
     def _renderizar_carrinho(self):
