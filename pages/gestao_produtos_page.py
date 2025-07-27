@@ -134,7 +134,7 @@ def render_page(supabase_client: Client):
             'preco_compra': [10.50, 25.00],
             'preco_venda': [15.75, 40.00],
             'qtd_minima_estoque': [10, 5],
-            'estoque_atual': 0  
+            'estoque_atual': [100, 50] # Estoque inicial para novos itens
         }
         modelo_df = pd.DataFrame(modelo_data)
         
