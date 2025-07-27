@@ -114,7 +114,7 @@ def render_page(supabase_client: Client):
     
                     with col3:
                         if st.button("✏️ Editar", key=f"edit_{produto['id']}", use_container_width=True):
-                            with st.dialog(f"Editando: {produto['nome']}",):
+                            with st.dialog(f"Editando: {produto['nome']}"):
                                 with st.form(key=f"form_edit_{produto['id']}"):
                                     st.subheader("Informações do Produto")
                                     
