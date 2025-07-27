@@ -73,101 +73,101 @@ def render_page(supabase_client: Client):
                     else:
                         st.error(f"Erro ao cadastrar: {response.error.message if response.error else 'Erro desconhecido'}")
     # Substitua o seu bloco "with tab_view:" inteiro por este:
-
-with tab_view:
-    st.subheader("Catálogo de Produtos")
-
-    # --- 1. CAMPO DE BUSCA INTERATIVO ---
-    df_produtos = get_produtos(supabase_client)
     
-    if df_produtos.empty:
-        st.info("Nenhum produto cadastrado ainda.")
-    else:
-        search_term = st.text_input("🔎 Buscar produto por nome", placeholder="Digite o nome do produto...")
-        if search_term:
-            df_produtos = df_produtos[df_produtos['nome'].str.contains(search_term, case=False, na=False)]
-
-        # --- 2. GALERIA DE PRODUTOS EM FORMATO DE CARDS ---
-        for index, produto in df_produtos.iterrows():
-            # Define a cor do status para o badge visual
-            status_info = {
-                'Ativo': ('#28a745', 'Ativo'),
-                'Inativo': ('#dc3545', 'Inativo')
-            }
-            cor_status, texto_status = status_info.get(produto.get('status', 'Inativo'), ('#6c757d', 'Desconhecido'))
-
-            with st.container(border=True):
-                col1, col2, col3 = st.columns([1, 4, 1])
-
-                with col1:
-                    st.image(produto.get('foto_url', 'https://placehold.co/300x300/f0f2f6/777?text=Sem+Foto'), width=100)
-
-                with col2:
-                    st.markdown(f"**{produto['nome']}**")
-                    st.caption(f"Categoria: {produto.get('tipo', 'N/A')}")
-                    # Badge de Status
-                    st.markdown(f"<span style='background-color: {cor_status}; color: white; padding: 3px 8px; border-radius: 15px; font-size: 12px;'>{texto_status}</span>", unsafe_allow_html=True)
-
-                with col3:
-                    # --- 3. BOTÃO QUE ABRE O POP-UP DE EDIÇÃO ---
-                    if st.button("✏️ Editar", key=f"edit_{produto['id']}", use_container_width=True):
-                        # O st.dialog cria o pop-up (LINHA CORRIGIDA)
-                        with st.dialog(f"Editando: {produto['nome']}",):
-                            with st.form(key=f"form_edit_{produto['id']}"):
-                                st.subheader("Informações do Produto")
-                                
-                                # Campos do formulário preenchidos com os dados atuais
-                                novo_nome = st.text_input("Nome do Produto", value=produto['nome'])
-                                novo_tipo = st.text_input("Tipo/Categoria", value=produto.get('tipo', ''))
-                                novo_codigo_barras = st.text_input("Código de Barras", value=produto.get('codigo_barras', ''))
-                                
-                                # Validade (com tratamento para data nula)
-                                data_validade_atual = pd.to_datetime(produto.get('data_validade')).date() if pd.notna(produto.get('data_validade')) else None
-                                nova_data_validade = st.date_input("Data de Validade", value=data_validade_atual)
-                                
-                                st.subheader("Valores e Status")
-                                col_form1, col_form2 = st.columns(2)
-                                with col_form1:
-                                    novo_preco_venda = st.number_input("Preço de Venda (R$)", value=float(produto['preco_venda']), format="%.2f")
-                                    novo_preco_compra = st.number_input("Preço de Compra (R$)", value=float(produto['preco_compra']), format="%.2f")
-                                with col_form2:
-                                    novo_status = st.selectbox("Status", options=['Ativo', 'Inativo'], index=['Ativo', 'Inativo'].index(produto.get('status', 'Ativo')))
-                                    st.metric("Estoque Atual", produto['estoque_atual'])
-                                
-                                st.subheader("Foto")
-                                nova_foto = st.file_uploader("Trocar Foto do Produto", type=['png', 'jpg', 'jpeg'])
-
-                                if st.form_submit_button("✅ Salvar Alterações", use_container_width=True, type="primary"):
-                                    with st.spinner("Salvando..."):
-                                        update_data = {
-                                            'nome': novo_nome,
-                                            'tipo': novo_tipo,
-                                            'codigo_barras': novo_codigo_barras,
-                                            'data_validade': str(nova_data_validade) if nova_data_validade else None,
-                                            'preco_venda': novo_preco_venda,
-                                            'preco_compra': novo_preco_compra,
-                                            'status': novo_status
-                                        }
-
-                                        # Lógica para atualizar a foto apenas se uma nova foi enviada
-                                        if nova_foto:
-                                            try:
-                                                file_path = f"{novo_nome.replace(' ', '_').lower()}_{int(time.time())}.{nova_foto.name.split('.')[-1]}"
-                                                supabase_client.storage.from_("fotos_produtos").upload(file_path, nova_foto.getvalue(), file_options={"cache-control": "3600", "upsert": "true"})
-                                                foto_url = supabase_client.storage.from_("fotos_produtos").get_public_url(file_path)
-                                                update_data['foto_url'] = foto_url
-                                            except Exception as e:
-                                                st.error(f"Erro no upload da nova foto: {e}")
-                                        
-                                        # Executa a atualização no banco de dados
-                                        response = supabase_client.table('produtos').update(update_data).eq('id', produto['id']).execute()
-
-                                        if not response.data:
-                                            st.error(f"Erro ao atualizar: {response.error.message if response.error else 'Verifique as permissões'}")
-                                        else:
-                                            st.success("Produto atualizado com sucesso!")
-                                            st.cache_data.clear() # Limpa o cache para recarregar os dados
-                                            st.rerun() # Recarrega a página para mostrar as alterações
+    with tab_view:
+        st.subheader("Catálogo de Produtos")
+    
+        # --- 1. CAMPO DE BUSCA INTERATIVO ---
+        df_produtos = get_produtos(supabase_client)
+        
+        if df_produtos.empty:
+            st.info("Nenhum produto cadastrado ainda.")
+        else:
+            search_term = st.text_input("🔎 Buscar produto por nome", placeholder="Digite o nome do produto...")
+            if search_term:
+                df_produtos = df_produtos[df_produtos['nome'].str.contains(search_term, case=False, na=False)]
+    
+            # --- 2. GALERIA DE PRODUTOS EM FORMATO DE CARDS ---
+            for index, produto in df_produtos.iterrows():
+                # Define a cor do status para o badge visual
+                status_info = {
+                    'Ativo': ('#28a745', 'Ativo'),
+                    'Inativo': ('#dc3545', 'Inativo')
+                }
+                cor_status, texto_status = status_info.get(produto.get('status', 'Inativo'), ('#6c757d', 'Desconhecido'))
+    
+                with st.container(border=True):
+                    col1, col2, col3 = st.columns([1, 4, 1])
+    
+                    with col1:
+                        st.image(produto.get('foto_url', 'https://placehold.co/300x300/f0f2f6/777?text=Sem+Foto'), width=100)
+    
+                    with col2:
+                        st.markdown(f"**{produto['nome']}**")
+                        st.caption(f"Categoria: {produto.get('tipo', 'N/A')}")
+                        # Badge de Status
+                        st.markdown(f"<span style='background-color: {cor_status}; color: white; padding: 3px 8px; border-radius: 15px; font-size: 12px;'>{texto_status}</span>", unsafe_allow_html=True)
+    
+                    with col3:
+                        # --- 3. BOTÃO QUE ABRE O POP-UP DE EDIÇÃO ---
+                        if st.button("✏️ Editar", key=f"edit_{produto['id']}", use_container_width=True):
+                            # O st.dialog cria o pop-up (LINHA CORRIGIDA)
+                            with st.dialog(f"Editando: {produto['nome']}",):
+                                with st.form(key=f"form_edit_{produto['id']}"):
+                                    st.subheader("Informações do Produto")
+                                    
+                                    # Campos do formulário preenchidos com os dados atuais
+                                    novo_nome = st.text_input("Nome do Produto", value=produto['nome'])
+                                    novo_tipo = st.text_input("Tipo/Categoria", value=produto.get('tipo', ''))
+                                    novo_codigo_barras = st.text_input("Código de Barras", value=produto.get('codigo_barras', ''))
+                                    
+                                    # Validade (com tratamento para data nula)
+                                    data_validade_atual = pd.to_datetime(produto.get('data_validade')).date() if pd.notna(produto.get('data_validade')) else None
+                                    nova_data_validade = st.date_input("Data de Validade", value=data_validade_atual)
+                                    
+                                    st.subheader("Valores e Status")
+                                    col_form1, col_form2 = st.columns(2)
+                                    with col_form1:
+                                        novo_preco_venda = st.number_input("Preço de Venda (R$)", value=float(produto['preco_venda']), format="%.2f")
+                                        novo_preco_compra = st.number_input("Preço de Compra (R$)", value=float(produto['preco_compra']), format="%.2f")
+                                    with col_form2:
+                                        novo_status = st.selectbox("Status", options=['Ativo', 'Inativo'], index=['Ativo', 'Inativo'].index(produto.get('status', 'Ativo')))
+                                        st.metric("Estoque Atual", produto['estoque_atual'])
+                                    
+                                    st.subheader("Foto")
+                                    nova_foto = st.file_uploader("Trocar Foto do Produto", type=['png', 'jpg', 'jpeg'])
+    
+                                    if st.form_submit_button("✅ Salvar Alterações", use_container_width=True, type="primary"):
+                                        with st.spinner("Salvando..."):
+                                            update_data = {
+                                                'nome': novo_nome,
+                                                'tipo': novo_tipo,
+                                                'codigo_barras': novo_codigo_barras,
+                                                'data_validade': str(nova_data_validade) if nova_data_validade else None,
+                                                'preco_venda': novo_preco_venda,
+                                                'preco_compra': novo_preco_compra,
+                                                'status': novo_status
+                                            }
+    
+                                            # Lógica para atualizar a foto apenas se uma nova foi enviada
+                                            if nova_foto:
+                                                try:
+                                                    file_path = f"{novo_nome.replace(' ', '_').lower()}_{int(time.time())}.{nova_foto.name.split('.')[-1]}"
+                                                    supabase_client.storage.from_("fotos_produtos").upload(file_path, nova_foto.getvalue(), file_options={"cache-control": "3600", "upsert": "true"})
+                                                    foto_url = supabase_client.storage.from_("fotos_produtos").get_public_url(file_path)
+                                                    update_data['foto_url'] = foto_url
+                                                except Exception as e:
+                                                    st.error(f"Erro no upload da nova foto: {e}")
+                                            
+                                            # Executa a atualização no banco de dados
+                                            response = supabase_client.table('produtos').update(update_data).eq('id', produto['id']).execute()
+    
+                                            if not response.data:
+                                                st.error(f"Erro ao atualizar: {response.error.message if response.error else 'Verifique as permissões'}")
+                                            else:
+                                                st.success("Produto atualizado com sucesso!")
+                                                st.cache_data.clear() # Limpa o cache para recarregar os dados
+                                                st.rerun() # Recarrega a página para mostrar as alterações
     
     with tab_bulk:
         st.subheader("Importação e Atualização em Massa via CSV")
