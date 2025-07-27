@@ -5,6 +5,7 @@ import time
 from supabase import Client
 from utils import supabase_client_hash_func
 import io
+import requests
 
 @st.cache_data(ttl=60, hash_funcs={Client: supabase_client_hash_func})
 def get_produtos(supabase_client: Client):
@@ -16,6 +17,28 @@ def get_fornecedores(supabase_client: Client):
     response = supabase_client.table('fornecedores').select('id, nome').order('nome').execute()
     return {fornecedor['nome']: fornecedor['id'] for fornecedor in response.data}
 
+def buscar_foto_online(nome_produto):
+    """Busca uma foto no Unsplash baseada no nome do produto."""
+    try:
+        api_key = st.secrets.get("UNSPLASH_ACCESS_KEY")
+        if not api_key:
+            st.warning("Chave da API do Unsplash não configurada nos segredos.")
+            return None
+
+        headers = {"Authorization": f"Client-ID {api_key}"}
+        params = {"query": nome_produto, "per_page": 1, "orientation": "landscape"}
+        response = requests.get("https://api.unsplash.com/search/photos", headers=headers, params=params)
+        response.raise_for_status()
+
+        data = response.json()
+        if data['results']:
+            return data['results'][0]['urls']['regular']
+    except requests.exceptions.RequestException as e:
+        st.error(f"Erro ao buscar imagem: {e}")
+    except Exception as e:
+        st.error(f"Ocorreu um erro inesperado: {e}")
+    
+    return None
 
 def render_page(supabase_client: Client):
     """Renderiza a página de gestão de produtos."""
@@ -36,11 +59,19 @@ def render_page(supabase_client: Client):
         with st.form("add_produto", clear_on_submit=True):
             nome = st.text_input("Nome do Produto", placeholder="Ex: X-Burger")
             tipo = st.text_input("Tipo/Categoria", placeholder="Ex: Lanche")
+            
+            st.markdown("---")
+            buscar_online = st.checkbox("Buscar foto online automaticamente", value=True)
+            
+            foto_produto = None
+            if not buscar_online:
+                foto_produto = st.file_uploader("Ou envie uma foto manualmente", type=["png", "jpg", "jpeg"])
+            st.markdown("---")
+            
             codigo_barras = st.text_input("Código de Barras (Opcional)", placeholder="Ex: 7891234567890")
             preco_compra = st.number_input("Preço de Compra (R$)", min_value=0.0, format="%.2f")
             preco_venda = st.number_input("Preço de Venda (R$)", min_value=0.0, format="%.2f")
             qtd_minima = st.number_input("Estoque Mínimo", min_value=0, step=1)
-            foto_produto = st.file_uploader("Foto do Produto", type=["png", "jpg", "jpeg"])
             
             submitted = st.form_submit_button("CADASTRAR PRODUTO")
 
@@ -49,37 +80,41 @@ def render_page(supabase_client: Client):
                     st.error("O nome do produto é obrigatório!")
                 else:
                     foto_url = None
-                    if foto_produto:
-                        try:
-                            file_path = f"{nome.replace(' ', '_').lower()}_{int(time.time())}.{foto_produto.name.split('.')[-1]}"
-                            supabase_client.storage.from_("fotos_produtos").upload(file_path, foto_produto.getvalue())
-                            foto_url = supabase_client.storage.from_("fotos_produtos").get_public_url(file_path)
-                        except Exception as e:
-                            st.warning(f"Não foi possível fazer o upload da foto: {e}")
-
-                    novo_produto = {
-                        "nome": nome, "tipo": tipo, "preco_compra": preco_compra,
-                        "preco_venda": preco_venda, "qtd_minima_estoque": qtd_minima,
-                        "foto_url": foto_url,
-                        # Inclui o código de barras somente se preenchido
-                        "codigo_barras": codigo_barras if codigo_barras else None
-                    }
-                    # O ID não é enviado, o banco de dados o gera automaticamente.
-                    response = supabase_client.table("produtos").insert(novo_produto).execute()
-                    
-                    if response.data:
-                        st.success("Produto cadastrado com sucesso!")
-                        st.cache_data.clear()
-                    else:
-                        st.error(f"Erro ao cadastrar: {response.error.message if response.error else 'Erro desconhecido'}")
-    # Substitua o seu bloco "with tab_view:" inteiro por este:
-    # Substitua o seu bloco "with tab_view:" inteiro por esta versão mais robusta:
-
-# Substitua o seu bloco "with tab_view:" inteiro por esta versão final:
+                    with st.spinner("Processando..."):
+                        if buscar_online:
+                            st.info(f"Buscando foto para '{nome}' online...")
+                            foto_url = buscar_foto_online(nome)
+                            if not foto_url:
+                                st.warning("Nenhuma foto encontrada online. O produto será cadastrado sem imagem.")
+                        
+                        elif foto_produto:
+                            try:
+                                file_path = f"{nome.replace(' ', '_').lower()}_{int(time.time())}.{foto_produto.name.split('.')[-1]}"
+                                supabase_client.storage.from_("fotos_produtos").upload(file_path, foto_produto.getvalue())
+                                foto_url = supabase_client.storage.from_("fotos_produtos").get_public_url(file_path)
+                            except Exception as e:
+                                st.error(f"Não foi possível fazer o upload da foto: {e}")
+                                st.stop()
+                        
+                        novo_produto = {
+                            "nome": nome, "tipo": tipo, "preco_compra": preco_compra,
+                            "preco_venda": preco_venda, "qtd_minima_estoque": qtd_minima,
+                            "foto_url": foto_url,
+                            "codigo_barras": codigo_barras if codigo_barras else None,
+                            "estoque_atual": 0
+                        }
+                        
+                        response = supabase_client.table("produtos").insert(novo_produto).execute()
+                        
+                        if response.data:
+                            st.success("Produto cadastrado com sucesso!")
+                            st.cache_data.clear()
+                        else:
+                            st.error(f"Erro ao cadastrar: {response.error.message if response.error else 'Erro desconhecido'}")
 
     with tab_view:
         st.subheader("Catálogo de Produtos")
-    
+
         df_produtos = get_produtos(supabase_client)
         
         if df_produtos.empty:
@@ -88,32 +123,31 @@ def render_page(supabase_client: Client):
             search_term = st.text_input("🔎 Buscar produto por nome", placeholder="Digite o nome do produto...")
             if search_term:
                 df_produtos = df_produtos[df_produtos['nome'].str.contains(search_term, case=False, na=False)]
-    
+
             for index, produto in df_produtos.iterrows():
                 status_info = {
                     'Ativo': ('#28a745', 'Ativo'),
                     'Inativo': ('#dc3545', 'Inativo')
                 }
                 cor_status, texto_status = status_info.get(produto.get('status', 'Inativo'), ('#6c757d', 'Desconhecido'))
-    
+
                 with st.container(border=True):
                     col1, col2, col3 = st.columns([1, 4, 1])
-    
+
                     with col1:
-                        foto_url = produto.get('foto_url')
-                        if foto_url and isinstance(foto_url, str):
-                            st.image(foto_url, width=100)
+                        foto_url_valida = produto.get('foto_url')
+                        if foto_url_valida and isinstance(foto_url_valida, str):
+                            st.image(foto_url_valida, width=100)
                         else:
                             st.image('https://placehold.co/300x300/f0f2f6/777?text=Sem+Foto', width=100)
-    
+
                     with col2:
                         st.markdown(f"**{produto['nome']}**")
                         st.caption(f"Categoria: {produto.get('tipo', 'N/A')}")
                         st.markdown(f"<span style='background-color: {cor_status}; color: white; padding: 3px 8px; border-radius: 15px; font-size: 12px;'>{texto_status}</span>", unsafe_allow_html=True)
-    
+
                     with col3:
                         if st.button("✏️ Editar", key=f"edit_{produto['id']}", use_container_width=True):
-                            # LINHA CORRIGIDA (sem a vírgula no final)
                             with st.dialog(f"Editando: {produto['nome']}"):
                                 with st.form(key=f"form_edit_{produto['id']}"):
                                     st.subheader("Informações do Produto")
@@ -136,7 +170,7 @@ def render_page(supabase_client: Client):
                                     
                                     st.subheader("Foto")
                                     nova_foto = st.file_uploader("Trocar Foto do Produto", type=['png', 'jpg', 'jpeg'])
-    
+
                                     if st.form_submit_button("✅ Salvar Alterações", use_container_width=True, type="primary"):
                                         with st.spinner("Salvando..."):
                                             update_data = {
@@ -148,7 +182,7 @@ def render_page(supabase_client: Client):
                                                 'preco_compra': novo_preco_compra,
                                                 'status': novo_status
                                             }
-    
+
                                             if nova_foto:
                                                 try:
                                                     file_path = f"{novo_nome.replace(' ', '_').lower()}_{int(time.time())}.{nova_foto.name.split('.')[-1]}"
@@ -159,14 +193,14 @@ def render_page(supabase_client: Client):
                                                     st.error(f"Erro no upload da nova foto: {e}")
                                             
                                             response = supabase_client.table('produtos').update(update_data).eq('id', produto['id']).execute()
-    
+
                                             if not response.data:
                                                 st.error(f"Erro ao atualizar: {response.error.message if response.error else 'Verifique as permissões'}")
                                             else:
                                                 st.success("Produto atualizado com sucesso!")
                                                 st.cache_data.clear()
                                                 st.rerun()
-    
+
     with tab_bulk:
         st.subheader("Importação e Atualização em Massa via CSV")
         st.markdown("""
@@ -177,7 +211,6 @@ def render_page(supabase_client: Client):
         3.  **Envie o arquivo** preenchido.
         """)
 
-        # Gerar e fornecer o modelo CSV para download
         modelo_data = {
             'id': [1, None],
             'nome': ['Produto Exemplo A (para atualizar)', 'Produto Exemplo B (novo)'],
@@ -186,11 +219,10 @@ def render_page(supabase_client: Client):
             'preco_compra': [10.50, 25.00],
             'preco_venda': [15.75, 40.00],
             'qtd_minima_estoque': [10, 5],
-            'estoque_atual': [100, 50] # Estoque inicial para novos itens
+            'estoque_atual': [100, 50]
         }
         modelo_df = pd.DataFrame(modelo_data)
         
-        # Converte o DataFrame para CSV em memória
         csv_buffer = io.StringIO()
         modelo_df.to_csv(csv_buffer, index=False, sep=';')
         csv_bytes = csv_buffer.getvalue().encode('utf-8')
@@ -211,12 +243,8 @@ def render_page(supabase_client: Client):
 
                 if st.button("CONFIRMAR E PROCESSAR ARQUIVO", type="primary"):
                     with st.spinner("Processando dados... Isso pode levar alguns minutos."):
-                        # Converte o DataFrame em uma lista de dicionários para o Supabase
                         registros = df_upload.to_dict(orient='records')
                         
-                        # A função 'upsert' é perfeita para isso:
-                        # - Se o 'id' existe, atualiza o registro.
-                        # - Se o 'id' não existe (ou está em branco), cria um novo registro.
                         response = supabase_client.table('produtos').upsert(registros, on_conflict='id').execute()
 
                         if response.data:
