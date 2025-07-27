@@ -45,7 +45,7 @@ class PontoDeVendaApp:
                 # ALTERAÇÃO: .gte para buscar produtos com estoque >= 0
                 response = supabase_client.table('produtos').select(
                     'id, nome, preco_venda, estoque_atual, tipo, foto_url, codigo_barras'
-                ).gte('estoque_atual', 0).range(start_index, start_index + page_size - 1).execute()
+                ).gte('estoque_atual', 0).eq('status', 'Ativo').range(start_index, start_index + page_size - 1).execute()
                 
                 batch = response.data
                 if not batch: break
