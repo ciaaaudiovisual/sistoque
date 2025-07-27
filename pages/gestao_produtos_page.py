@@ -75,6 +75,8 @@ def render_page(supabase_client: Client):
     # Substitua o seu bloco "with tab_view:" inteiro por este:
     # Substitua o seu bloco "with tab_view:" inteiro por esta versão mais robusta:
 
+# Substitua o seu bloco "with tab_view:" inteiro por esta versão final:
+
     with tab_view:
         st.subheader("Catálogo de Produtos")
     
@@ -97,15 +99,12 @@ def render_page(supabase_client: Client):
                 with st.container(border=True):
                     col1, col2, col3 = st.columns([1, 4, 1])
     
-                    # --- BLOCO CORRIGIDO ---
                     with col1:
                         foto_url = produto.get('foto_url')
-                        # Adicionada uma verificação robusta para garantir que a URL é uma string válida
                         if foto_url and isinstance(foto_url, str):
                             st.image(foto_url, width=100)
                         else:
                             st.image('https://placehold.co/300x300/f0f2f6/777?text=Sem+Foto', width=100)
-                    # --- FIM DO BLOCO CORRIGIDO ---
     
                     with col2:
                         st.markdown(f"**{produto['nome']}**")
@@ -114,6 +113,7 @@ def render_page(supabase_client: Client):
     
                     with col3:
                         if st.button("✏️ Editar", key=f"edit_{produto['id']}", use_container_width=True):
+                            # LINHA CORRIGIDA (sem a vírgula no final)
                             with st.dialog(f"Editando: {produto['nome']}"):
                                 with st.form(key=f"form_edit_{produto['id']}"):
                                     st.subheader("Informações do Produto")
