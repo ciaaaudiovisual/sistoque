@@ -73,11 +73,11 @@ def render_page(supabase_client: Client):
                     else:
                         st.error(f"Erro ao cadastrar: {response.error.message if response.error else 'Erro desconhecido'}")
     # Substitua o seu bloco "with tab_view:" inteiro por este:
-    
+    # Substitua o seu bloco "with tab_view:" inteiro por esta versão mais robusta:
+
     with tab_view:
         st.subheader("Catálogo de Produtos")
     
-        # --- 1. CAMPO DE BUSCA INTERATIVO ---
         df_produtos = get_produtos(supabase_client)
         
         if df_produtos.empty:
@@ -87,9 +87,7 @@ def render_page(supabase_client: Client):
             if search_term:
                 df_produtos = df_produtos[df_produtos['nome'].str.contains(search_term, case=False, na=False)]
     
-            # --- 2. GALERIA DE PRODUTOS EM FORMATO DE CARDS ---
             for index, produto in df_produtos.iterrows():
-                # Define a cor do status para o badge visual
                 status_info = {
                     'Ativo': ('#28a745', 'Ativo'),
                     'Inativo': ('#dc3545', 'Inativo')
@@ -99,29 +97,31 @@ def render_page(supabase_client: Client):
                 with st.container(border=True):
                     col1, col2, col3 = st.columns([1, 4, 1])
     
+                    # --- BLOCO CORRIGIDO ---
                     with col1:
-                        st.image(produto.get('foto_url', 'https://placehold.co/300x300/f0f2f6/777?text=Sem+Foto'), width=100)
+                        foto_url = produto.get('foto_url')
+                        # Adicionada uma verificação robusta para garantir que a URL é uma string válida
+                        if foto_url and isinstance(foto_url, str):
+                            st.image(foto_url, width=100)
+                        else:
+                            st.image('https://placehold.co/300x300/f0f2f6/777?text=Sem+Foto', width=100)
+                    # --- FIM DO BLOCO CORRIGIDO ---
     
                     with col2:
                         st.markdown(f"**{produto['nome']}**")
                         st.caption(f"Categoria: {produto.get('tipo', 'N/A')}")
-                        # Badge de Status
                         st.markdown(f"<span style='background-color: {cor_status}; color: white; padding: 3px 8px; border-radius: 15px; font-size: 12px;'>{texto_status}</span>", unsafe_allow_html=True)
     
                     with col3:
-                        # --- 3. BOTÃO QUE ABRE O POP-UP DE EDIÇÃO ---
                         if st.button("✏️ Editar", key=f"edit_{produto['id']}", use_container_width=True):
-                            # O st.dialog cria o pop-up (LINHA CORRIGIDA)
                             with st.dialog(f"Editando: {produto['nome']}",):
                                 with st.form(key=f"form_edit_{produto['id']}"):
                                     st.subheader("Informações do Produto")
                                     
-                                    # Campos do formulário preenchidos com os dados atuais
                                     novo_nome = st.text_input("Nome do Produto", value=produto['nome'])
                                     novo_tipo = st.text_input("Tipo/Categoria", value=produto.get('tipo', ''))
                                     novo_codigo_barras = st.text_input("Código de Barras", value=produto.get('codigo_barras', ''))
                                     
-                                    # Validade (com tratamento para data nula)
                                     data_validade_atual = pd.to_datetime(produto.get('data_validade')).date() if pd.notna(produto.get('data_validade')) else None
                                     nova_data_validade = st.date_input("Data de Validade", value=data_validade_atual)
                                     
@@ -149,7 +149,6 @@ def render_page(supabase_client: Client):
                                                 'status': novo_status
                                             }
     
-                                            # Lógica para atualizar a foto apenas se uma nova foi enviada
                                             if nova_foto:
                                                 try:
                                                     file_path = f"{novo_nome.replace(' ', '_').lower()}_{int(time.time())}.{nova_foto.name.split('.')[-1]}"
@@ -159,15 +158,14 @@ def render_page(supabase_client: Client):
                                                 except Exception as e:
                                                     st.error(f"Erro no upload da nova foto: {e}")
                                             
-                                            # Executa a atualização no banco de dados
                                             response = supabase_client.table('produtos').update(update_data).eq('id', produto['id']).execute()
     
                                             if not response.data:
                                                 st.error(f"Erro ao atualizar: {response.error.message if response.error else 'Verifique as permissões'}")
                                             else:
                                                 st.success("Produto atualizado com sucesso!")
-                                                st.cache_data.clear() # Limpa o cache para recarregar os dados
-                                                st.rerun() # Recarrega a página para mostrar as alterações
+                                                st.cache_data.clear()
+                                                st.rerun()
     
     with tab_bulk:
         st.subheader("Importação e Atualização em Massa via CSV")
