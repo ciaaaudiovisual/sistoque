@@ -42,7 +42,10 @@ class PontoDeVendaApp:
         while True:
             try:
                 start_index = current_page * page_size
-                response = supabase_client.table('produtos').select('id, nome, preco_venda, estoque_atual, tipo, foto_url, codigo_barras').gte('estoque_atual', 0).range(start_index, start_index + page_size - 1).execute()
+                # ALTERAÇÃO: .gte para buscar produtos com estoque >= 0
+                response = supabase_client.table('produtos').select(
+                    'id, nome, preco_venda, estoque_atual, tipo, foto_url, codigo_barras'
+                ).gte('estoque_atual', 0).range(start_index, start_index + page_size - 1).execute()
                 
                 batch = response.data
                 if not batch: break
@@ -103,7 +106,6 @@ class PontoDeVendaApp:
         if st.session_state.pdv_categoria_selecionada != categoria_selecionada:
             st.session_state.pdv_categoria_selecionada = categoria_selecionada; st.rerun()
 
-    # --- FUNÇÃO CORRIGIDA ---
     def _renderizar_leitor_codigo_barras(self, produtos, container):
         barcode_result_container = BarcodeResult()
         def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
@@ -114,7 +116,6 @@ class PontoDeVendaApp:
                 barcode_result_container.set(barcode_data)
             return frame
         
-        # Renderiza o leitor DENTRO do container do diálogo
         webrtc_ctx = container.webrtc_streamer(
             key="barcode-scanner", mode=WebRtcMode.SENDRECV,
             video_frame_callback=video_frame_callback,
@@ -150,30 +151,30 @@ class PontoDeVendaApp:
 
     def _renderizar_catalogo_grelha(self, produtos_filtrados):
         cols = st.columns(4)
-    for i, produto in enumerate(produtos_filtrados):
-        with cols[i % 4]:
-            with st.container(border=True):
-                st.image(produto['foto_url'] or "https://placehold.co/300x200/f0f2f6/777?text=Sem+Imagem")
-                # Estilo CSS para não quebrar a linha do nome do produto
-                st.markdown(f"""
-                <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{produto['nome']}">
-                    <h5 style="margin-bottom: 0;">{produto['nome']}</h5>
-                </div>
-                """, unsafe_allow_html=True)
-                st.markdown(f"**R$ {produto['preco_venda']:.2f}**")
-                
-                # Condição para mostrar o botão correto baseado no estoque
-                if produto.get('estoque_atual', 0) > 0:
-                    st.button("Adicionar ＋", key=f"add_grid_{produto['id']}", on_click=self._adicionar_ao_carrinho, args=(produto,), use_container_width=True, type="primary")
-                else:
-                    st.button("Fora de Estoque", key=f"add_grid_{produto['id']}", use_container_width=True, disabled=True)
+        for i, produto in enumerate(produtos_filtrados):
+            with cols[i % 4]:
+                with st.container(border=True):
+                    st.image(produto['foto_url'] or "https://placehold.co/300x200/f0f2f6/777?text=Sem+Imagem")
+                    # ALTERAÇÃO: Estilo CSS para não quebrar a linha do nome do produto
+                    st.markdown(f"""
+                    <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{produto['nome']}">
+                        <h5 style="margin-bottom: 0;">{produto['nome']}</h5>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    st.markdown(f"**R$ {produto['preco_venda']:.2f}**")
+                    
+                    # ALTERAÇÃO: Condição para mostrar o botão correto baseado no estoque
+                    if produto.get('estoque_atual', 0) > 0:
+                        st.button("Adicionar ＋", key=f"add_grid_{produto['id']}", on_click=self._adicionar_ao_carrinho, args=(produto,), use_container_width=True, type="primary")
+                    else:
+                        st.button("Fora de Estoque", key=f"add_grid_{produto['id']}", use_container_width=True, disabled=True)
 
     def _renderizar_catalogo_lista(self, produtos_filtrados):
         with st.container(height=600):
             for produto in produtos_filtrados:
                 cols = st.columns([3, 1, 1.2])
                 with cols[0]:
-                    # Estilo CSS para não quebrar a linha do nome do produto
+                    # ALTERAÇÃO: Estilo CSS para não quebrar a linha do nome do produto
                     st.markdown(f"""
                     <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-top: 8px" title="{produto['nome']}">
                         <strong>{produto['nome']}</strong>
@@ -182,13 +183,13 @@ class PontoDeVendaApp:
                 with cols[1]:
                     st.write(f"R$ {produto['preco_venda']:.2f}")
                 with cols[2]:
-                    # Condição para mostrar o botão correto baseado no estoque
+                    # ALTERAÇÃO: Condição para mostrar o botão correto baseado no estoque
                     if produto.get('estoque_atual', 0) > 0:
                         st.button("Adicionar ＋", key=f"add_list_{produto['id']}", on_click=self._adicionar_ao_carrinho, args=(produto,), use_container_width=True, type="primary")
                     else:
                         st.button("Fora de Estoque", key=f"add_list_{produto['id']}", use_container_width=True, disabled=True)
                 st.divider()
-    
+
     def _renderizar_carrinho(self):
         carrinho = st.session_state.pdv_carrinho
         total_venda = sum(item['quantidade'] * item['preco_unitario'] for item in carrinho.values())
@@ -234,7 +235,6 @@ class PontoDeVendaApp:
                 st.toast(f"❌ Código '{codigo}' não encontrado!")
             st.rerun()
 
-        # --- CHAMADA CORRIGIDA AO DIALOG ---
         if st.session_state.show_scanner:
             dialog = st.dialog("Leitor de Código de Barras")
             dialog.write("Aponte a câmera para o código de barras do produto.")
