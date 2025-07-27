@@ -44,7 +44,7 @@ class PontoDeVendaApp:
                 start_index = current_page * page_size
                 response = supabase_client.table('produtos').select(
                     'id, nome, preco_venda, estoque_atual, tipo, foto_url, codigo_barras'
-                ).gt('estoque_atual', 0).range(start_index, start_index + page_size - 1).execute()
+                ).gte('estoque_atual', 0).range(start_index, start_index + page_size - 1).execute()
                 
                 batch = response.data
                 if not batch: break
