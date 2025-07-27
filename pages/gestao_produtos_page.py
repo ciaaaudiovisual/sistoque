@@ -8,9 +8,14 @@ import io
 
 @st.cache_data(ttl=60, hash_funcs={Client: supabase_client_hash_func})
 def get_produtos(supabase_client: Client):
-    """Busca todos os produtos usando a conexão fornecida."""
     response = supabase_client.table('produtos').select('*').order('id').execute()
     return pd.DataFrame(response.data)
+
+@st.cache_data(ttl=60, hash_funcs={Client: supabase_client_hash_func})
+def get_fornecedores(supabase_client: Client):
+    response = supabase_client.table('fornecedores').select('id, nome').order('nome').execute()
+    return {fornecedor['nome']: fornecedor['id'] for fornecedor in response.data}
+
 
 def render_page(supabase_client: Client):
     """Renderiza a página de gestão de produtos."""
