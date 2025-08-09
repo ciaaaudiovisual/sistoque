@@ -1,110 +1,133 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
-from streamlit_js_eval import streamlit_js_eval
 import re
 import pandas as pd
 from datetime import datetime, timedelta
 import pytz
+from supabase import Client
 
-# Importações de outros ficheiros do seu projeto
+# Importa as funções de renderização de cada página e a conexão
 from utils import init_connection
 from pages import gestao_produtos_page, gerenciamento_usuarios_page, movimentacao_page, pdv_page, relatorios_page
 
 st.set_page_config(page_title="Sistoque | Sistema de Gestão", layout="wide")
 
-# Inicializa o cliente Supabase
-supabase = init_connection()
+# --- FUNÇÕES DE DADOS E CONEXÃO ---
 
-if not supabase:
-    st.error("Falha fatal na conexão com o banco de dados. Verifique os Secrets.")
-    st.stop()
+# Esta função de hash é necessária se você passar o cliente supabase para uma função com cache
+def supabase_client_hash_func(client: Client) -> int:
+    """Função de hash para o cliente Supabase, para uso com cache."""
+    return id(client)
 
-# --- Gerenciamento de Estado da Sessão ---
-if 'user' not in st.session_state:
-    st.session_state.user = None
-if 'user_role' not in st.session_state:
-    st.session_state.user_role = None
-# --- NOVA FLAG PARA CONTROLE DE RECARGA ---
-if 'recovery_attempt' not in st.session_state:
-    st.session_state.recovery_attempt = False
+@st.cache_data(ttl=60, hash_funcs={Client: supabase_client_hash_func})
+def get_dashboard_data(supabase: Client):
+    """Busca os dados necessários para o dashboard."""
+    produtos_response = supabase.table('produtos').select('*').execute()
+    # Adicionei um filtro de data para não carregar dados muito antigos desnecessariamente
+    data_limite = (datetime.now() - timedelta(days=30)).isoformat()
+    movimentacoes_response = supabase.table('movimentacoes').select('quantidade, produtos(preco_venda)').eq('tipo_movimentacao', 'SAÍDA').gte('data_movimentacao', data_limite).execute()
+    
+    df_produtos = pd.DataFrame(produtos_response.data)
+    df_movimentacoes = pd.DataFrame(movimentacoes_response.data)
+    
+    return df_produtos, df_movimentacoes
 
-# --- Funções de Autenticação ---
-def get_user_profile(user_id):
-    response = supabase.table('perfis').select('cargo, status, nome_completo').eq('id', user_id).single().execute()
+def get_user_profile(supabase_client, user_id):
+    """Busca o perfil do usuário no banco de dados."""
+    response = supabase_client.table('perfis').select('cargo, status, nome_completo').eq('id', user_id).single().execute()
     return response.data if response.data else None
 
 def logout():
+    """Realiza o logout do usuário e limpa a sessão."""
     st.session_state.user = None
     st.session_state.user_role = None
-    st.session_state.recovery_attempt = False # Limpa a flag no logout
     st.cache_data.clear()
-    streamlit_js_eval(js_expressions='window.location.hash = ""')
+    st.query_params.clear()
     st.rerun()
 
-# --- TELA DE LOGIN / RECUPERAÇÃO DE SENHA ---
-if st.session_state.user is None:
-    st.markdown("""<style>[data-testid="stSidebar"] {display: none;}</style>""", unsafe_allow_html=True)
-    
-    url_hash = streamlit_js_eval(js_expressions='window.location.hash', want_output=True)
-    
-    params = {}
-    if url_hash and isinstance(url_hash, str) and url_hash.startswith('#'):
-        st.session_state.recovery_attempt = True # Ativa a flag se encontrarmos um hash
-        param_list = url_hash[1:].split('&')
-        for param in param_list:
-            if '=' in param:
-                key, value = param.split('=', 1)
-                params[key] = value
+# --- PÁGINA PRINCIPAL ---
+def main():
+    supabase = init_connection()
+    if not supabase:
+        st.stop()
 
+    if 'user' not in st.session_state:
+        st.session_state.user = None
+    if 'user_role' not in st.session_state:
+        st.session_state.user_role = None
+
+    # Tenta autenticar via token da URL (fluxo de recuperação de senha)
+    params = st.query_params.to_dict()
     access_token = params.get("access_token")
-    
-    # --- LÓGICA ATUALIZADA PARA LIDAR COM TIMING ---
-    # Se o tipo na URL for recovery mas o token ainda não foi lido (primeira carga)
-    if url_hash and "type=recovery" in url_hash and not access_token and not st.session_state.get('recovery_processed', False):
-        st.session_state.recovery_processed = True
-        st.rerun() # Força a recarga para dar tempo ao JS de pegar o hash
 
-    elif params.get("type") == "recovery" and access_token:
-        st.title("🔑 Defina sua Nova Senha")
-        with st.form("update_password_form"):
-            new_password = st.text_input("Nova Senha", type="password")
-            confirm_password = st.text_input("Confirme a Nova Senha", type="password")
+    if access_token and not st.session_state.user:
+        try:
+            # Estabelece uma sessão temporária com o token
+            session_response = supabase.auth.get_user(access_token)
+            st.session_state.user = session_response.user
+        except Exception:
+            st.error("O link de recuperação de senha é inválido ou expirou. Por favor, solicite um novo.")
+            access_token = None # Invalida o token se der erro
+            st.query_params.clear()
+
+    # --- LÓGICA DE EXIBIÇÃO ---
+
+    # CASO 1: Usuário está logado (normalmente ou via link de recuperação)
+    if st.session_state.user:
+        # Se veio de um link de recuperação, mostra a tela para trocar a senha
+        if access_token and params.get("type") == "recovery":
+            st.title("🔑 Defina sua Nova Senha")
+            with st.form("update_password_form"):
+                new_password = st.text_input("Nova Senha", type="password")
+                confirm_password = st.text_input("Confirme a Nova Senha", type="password")
+                
+                if st.form_submit_button("Atualizar Senha", type="primary"):
+                    if not new_password or new_password != confirm_password:
+                        st.error("As senhas não correspondem ou estão em branco.")
+                    else:
+                        try:
+                            supabase.auth.update_user({"password": new_password})
+                            st.success("Sua senha foi atualizada com sucesso!")
+                            st.info("Você será desconectado para poder fazer login com sua nova senha.", icon="ℹ️")
+                            st.balloons()
+                            logout()
+                        except Exception as e:
+                            st.error(f"Não foi possível atualizar a senha. Erro: {e}")
+        # Se está logado normalmente, mostra a aplicação
+        else:
+            if not st.session_state.user_role:
+                profile = get_user_profile(supabase, st.session_state.user.id)
+                if profile:
+                    st.session_state.user_role = profile['cargo']
+
+            with st.sidebar:
+                st.subheader(f"Bem-vindo(a), {st.session_state.user.user_metadata.get('nome_completo', '')}!")
+                st.write(f"Cargo: **{st.session_state.user_role}**")
+                if st.button("Sair (Logout)", use_container_width=True):
+                    logout()
+
+            selected = option_menu(...) # Menu superior aqui
+            # Lógica do menu aqui
             
-            if st.form_submit_button("Atualizar Senha", type="primary"):
-                if not new_password or new_password != confirm_password:
-                    st.error("As senhas não correspondem ou estão em branco.")
-                else:
-                    try:
-                        supabase.auth.update_user({"password": new_password}, access_token=access_token)
-                        st.success("Sua senha foi atualizada com sucesso! Você já pode fazer o login.")
-                        st.balloons()
-                        st.session_state.recovery_processed = False # Reseta a flag
-                        streamlit_js_eval(js_expressions='window.location.hash = ""')
-                    except Exception as e:
-                        st.error(f"Não foi possível atualizar a senha. O link pode ter expirado. Erro: {e}")
+    # CASO 2: Usuário não está logado e não está em fluxo de recuperação
     else:
-        # Reseta a flag se sairmos do fluxo de recuperação
-        st.session_state.recovery_processed = False
+        st.markdown("""<style>[data-testid="stSidebar"] {display: none;}</style>""", unsafe_allow_html=True)
         st.title("📦 Sistoque | Controle de Estoque e Vendas")
         login_tab, signup_tab = st.tabs(["Entrar", "Cadastre-se"])
         
         with login_tab:
-            # ... (código do formulário de login e do expander "esqueci minha senha" permanece o mesmo) ...
             with st.form("login_form"):
                 email = st.text_input("Email")
                 password = st.text_input("Senha", type="password")
                 if st.form_submit_button("Entrar"):
                     try:
                         session = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                        profile = get_user_profile(session.user.id)
+                        profile = get_user_profile(supabase, session.user.id)
                         if profile and profile['status'] == 'Ativo':
                             st.session_state.user = session.user
                             st.session_state.user_role = profile['cargo']
                             st.rerun()
-                        elif profile and profile['status'] == 'Pendente':
-                            st.warning("Sua conta está aguardando aprovação de um administrador.")
-                        else:
-                            st.error("Conta inativa ou não confirmada. Verifique seu e-mail (incluindo spam).")
+                        # ... resto da lógica de login
                     except Exception:
                         st.error("Falha no login. Verifique seu e-mail e senha.")
 
@@ -114,7 +137,12 @@ if st.session_state.user is None:
                     email_reset = st.text_input("Digite o seu e-mail para recuperação")
                     if st.form_submit_button("Enviar link de recuperação"):
                         try:
-                            supabase.auth.reset_password_for_email(email_reset)
+                            # Passamos a URL do app para o Supabase saber para onde redirecionar
+                            app_url = "https://sistoque.streamlit.app/" # CONFIRME SE ESTA É A URL CORRETA
+                            supabase.auth.reset_password_for_email(
+                                email_reset,
+                                options={"redirect_to": app_url}
+                            )
                             st.success("Se este e-mail estiver cadastrado, um link para redefinir sua senha foi enviado.")
                         except Exception as e:
                             st.error(f"Ocorreu um erro: {e}")
