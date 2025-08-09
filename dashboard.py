@@ -1,12 +1,14 @@
+# dashboard.py
+
 import streamlit as st
 from streamlit_option_menu import option_menu
-from streamlit_js_eval import streamlit_js_eval # Importa a nova biblioteca
+from streamlit_js_eval import streamlit_js_eval # Biblioteca para ler a URL
 import re
 import pandas as pd
 from datetime import datetime, timedelta
 import pytz
 
-# Importações de outros ficheiros do seu projeto
+# Importa as funções de renderização de cada página e a conexão
 from utils import init_connection
 from pages import gestao_produtos_page, gerenciamento_usuarios_page, movimentacao_page, pdv_page, relatorios_page
 
@@ -16,6 +18,7 @@ st.set_page_config(page_title="Sistoque | Sistema de Gestão", layout="wide")
 supabase = init_connection()
 
 if not supabase:
+    st.error("Falha fatal na conexão com o banco de dados. Verifique os Secrets.")
     st.stop()
 
 # --- Gerenciamento de Estado da Sessão ---
@@ -26,23 +29,29 @@ if 'user_role' not in st.session_state:
 
 # --- Funções de Autenticação ---
 def get_user_profile(user_id):
+    """Busca o perfil do usuário no banco de dados."""
     response = supabase.table('perfis').select('cargo, status, nome_completo').eq('id', user_id).single().execute()
     return response.data if response.data else None
 
 def logout():
+    """Realiza o logout do usuário e limpa a sessão."""
     st.session_state.user = None
     st.session_state.user_role = None
     st.cache_data.clear()
-    streamlit_js_eval(js_expressions='window.location.hash = ""') # Limpa o hash da URL
+    # Limpa o hash da URL para evitar que a tela de recuperação fique "presa"
+    streamlit_js_eval(js_expressions='window.location.hash = ""')
     st.rerun()
 
 # --- TELA DE LOGIN / RECUPERAÇÃO DE SENHA ---
 if st.session_state.user is None:
     st.markdown("""<style>[data-testid="stSidebar"] {display: none;}</style>""", unsafe_allow_html=True)
     
-if st.session_state.user is None:
-    st.markdown("""<style>[data-testid="stSidebar"] {display: none;}</style>""", unsafe_allow_html=True)
+    # --- LÓGICA PARA CAPTURAR O TOKEN DA URL ---
     url_hash = streamlit_js_eval(js_expressions='window.location.hash', want_output=True)
+    
+    # Linha de debug para vermos o que está sendo lido da URL
+    st.write(f"DEBUG: O hash da URL é: {url_hash}") 
+    
     params = {}
     if url_hash and isinstance(url_hash, str) and url_hash.startswith('#'):
         # Parseia os parâmetros da URL (ex: #access_token=...&type=recovery)
@@ -61,7 +70,7 @@ if st.session_state.user is None:
             new_password = st.text_input("Nova Senha", type="password")
             confirm_password = st.text_input("Confirme a Nova Senha", type="password")
             
-            if st.form_submit_button("Atualizar Senha"):
+            if st.form_submit_button("Atualizar Senha", type="primary"):
                 if not new_password or new_password != confirm_password:
                     st.error("As senhas não correspondem ou estão em branco.")
                 else:
@@ -73,7 +82,6 @@ if st.session_state.user is None:
                         )
                         st.success("Sua senha foi atualizada com sucesso! Você já pode fazer o login.")
                         st.balloons()
-                        # Limpa o hash da URL para não ficar "preso" nesta tela
                         streamlit_js_eval(js_expressions='window.location.hash = ""')
                     except Exception as e:
                         st.error(f"Não foi possível atualizar a senha. O link pode ter expirado. Erro: {e}")
@@ -98,7 +106,7 @@ if st.session_state.user is None:
                         elif profile and profile['status'] == 'Pendente':
                             st.warning("Sua conta está aguardando aprovação de um administrador.")
                         else:
-                            st.error("Conta inativa ou não confirmada. Verifique seu e-mail.")
+                            st.error("Conta inativa ou não confirmada. Verifique seu e-mail (incluindo spam).")
                     except Exception:
                         st.error("Falha no login. Verifique seu e-mail e senha.")
 
@@ -153,7 +161,9 @@ else:
 
     if selected == "Dashboard":
         st.title("📈 Dashboard de Performance")
-        # Lógica do Dashboard aqui...
+        # A lógica do dashboard que você tinha no seu ficheiro original iria aqui.
+        st.info("O conteúdo do Dashboard pode ser implementado aqui.")
+
     elif selected == "PDV":
         pdv_page.render_page(supabase)
     elif selected == "Produtos":
