@@ -7,3 +7,4 @@ pytz
 streamlit-webrtc 
 pyzbar 
 av
+streamlit-js-eval
