@@ -1,14 +1,12 @@
-# dashboard.py
-
 import streamlit as st
 from streamlit_option_menu import option_menu
-from streamlit_js_eval import streamlit_js_eval # Biblioteca para ler a URL
+from streamlit_js_eval import streamlit_js_eval
 import re
 import pandas as pd
 from datetime import datetime, timedelta
 import pytz
 
-# Importa as funções de renderização de cada página e a conexão
+# Importações de outros ficheiros do seu projeto
 from utils import init_connection
 from pages import gestao_produtos_page, gerenciamento_usuarios_page, movimentacao_page, pdv_page, relatorios_page
 
@@ -26,19 +24,20 @@ if 'user' not in st.session_state:
     st.session_state.user = None
 if 'user_role' not in st.session_state:
     st.session_state.user_role = None
+# --- NOVA FLAG PARA CONTROLE DE RECARGA ---
+if 'recovery_attempt' not in st.session_state:
+    st.session_state.recovery_attempt = False
 
 # --- Funções de Autenticação ---
 def get_user_profile(user_id):
-    """Busca o perfil do usuário no banco de dados."""
     response = supabase.table('perfis').select('cargo, status, nome_completo').eq('id', user_id).single().execute()
     return response.data if response.data else None
 
 def logout():
-    """Realiza o logout do usuário e limpa a sessão."""
     st.session_state.user = None
     st.session_state.user_role = None
+    st.session_state.recovery_attempt = False # Limpa a flag no logout
     st.cache_data.clear()
-    # Limpa o hash da URL para evitar que a tela de recuperação fique "presa"
     streamlit_js_eval(js_expressions='window.location.hash = ""')
     st.rerun()
 
@@ -46,15 +45,11 @@ def logout():
 if st.session_state.user is None:
     st.markdown("""<style>[data-testid="stSidebar"] {display: none;}</style>""", unsafe_allow_html=True)
     
-    # --- LÓGICA PARA CAPTURAR O TOKEN DA URL ---
     url_hash = streamlit_js_eval(js_expressions='window.location.hash', want_output=True)
-    
-    # Linha de debug para vermos o que está sendo lido da URL
-    st.write(f"DEBUG: O hash da URL é: {url_hash}") 
     
     params = {}
     if url_hash and isinstance(url_hash, str) and url_hash.startswith('#'):
-        # Parseia os parâmetros da URL (ex: #access_token=...&type=recovery)
+        st.session_state.recovery_attempt = True # Ativa a flag se encontrarmos um hash
         param_list = url_hash[1:].split('&')
         for param in param_list:
             if '=' in param:
@@ -63,8 +58,13 @@ if st.session_state.user is None:
 
     access_token = params.get("access_token")
     
-    # --- MOSTRA O FORMULÁRIO DE NOVA SENHA SE O TIPO FOR "RECOVERY" ---
-    if params.get("type") == "recovery" and access_token:
+    # --- LÓGICA ATUALIZADA PARA LIDAR COM TIMING ---
+    # Se o tipo na URL for recovery mas o token ainda não foi lido (primeira carga)
+    if url_hash and "type=recovery" in url_hash and not access_token and not st.session_state.get('recovery_processed', False):
+        st.session_state.recovery_processed = True
+        st.rerun() # Força a recarga para dar tempo ao JS de pegar o hash
+
+    elif params.get("type") == "recovery" and access_token:
         st.title("🔑 Defina sua Nova Senha")
         with st.form("update_password_form"):
             new_password = st.text_input("Nova Senha", type="password")
@@ -75,23 +75,21 @@ if st.session_state.user is None:
                     st.error("As senhas não correspondem ou estão em branco.")
                 else:
                     try:
-                        # Usa o access_token para atualizar o usuário
-                        supabase.auth.update_user(
-                            {"password": new_password}, 
-                            access_token=access_token
-                        )
+                        supabase.auth.update_user({"password": new_password}, access_token=access_token)
                         st.success("Sua senha foi atualizada com sucesso! Você já pode fazer o login.")
                         st.balloons()
+                        st.session_state.recovery_processed = False # Reseta a flag
                         streamlit_js_eval(js_expressions='window.location.hash = ""')
                     except Exception as e:
                         st.error(f"Não foi possível atualizar a senha. O link pode ter expirado. Erro: {e}")
-
-    # --- MOSTRA A TELA DE LOGIN NORMAL SE NÃO FOR RECUPERAÇÃO DE SENHA ---
     else:
+        # Reseta a flag se sairmos do fluxo de recuperação
+        st.session_state.recovery_processed = False
         st.title("📦 Sistoque | Controle de Estoque e Vendas")
         login_tab, signup_tab = st.tabs(["Entrar", "Cadastre-se"])
         
         with login_tab:
+            # ... (código do formulário de login e do expander "esqueci minha senha" permanece o mesmo) ...
             with st.form("login_form"):
                 email = st.text_input("Email")
                 password = st.text_input("Senha", type="password")
@@ -122,6 +120,7 @@ if st.session_state.user is None:
                             st.error(f"Ocorreu um erro: {e}")
         
         with signup_tab:
+            # ... (código do formulário de cadastro permanece o mesmo) ...
             with st.form("signup_form", clear_on_submit=True):
                 nome_completo = st.text_input("Nome Completo")
                 email_signup = st.text_input("Email de Cadastro")
@@ -161,7 +160,6 @@ else:
 
     if selected == "Dashboard":
         st.title("📈 Dashboard de Performance")
-        # A lógica do dashboard que você tinha no seu ficheiro original iria aqui.
         st.info("O conteúdo do Dashboard pode ser implementado aqui.")
 
     elif selected == "PDV":
