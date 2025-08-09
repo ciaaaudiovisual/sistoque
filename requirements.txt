@@ -8,4 +8,4 @@ streamlit-webrtc
 pyzbar 
 av
 streamlit-js-eval
-python-doten
+python-dotenv
