@@ -1,57 +1,84 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
+from streamlit_js_eval import streamlit_js_eval # Importa a nova biblioteca
 import re
 import pandas as pd
 from datetime import datetime, timedelta
-import pytz  # Importa a biblioteca de fuso horário
+import pytz
 
-# --- CORREÇÃO: Importações necessárias para a função de cache ---
-# Nota: As importações de 'pages' e 'utils' foram removidas pois o código está em um único ficheiro.
-# Se você voltar a usar a estrutura de múltiplos ficheiros, precisará re-adicionar as importações corretas.
-from supabase import create_client, Client
-# from utils import init_connection, supabase_client_hash_func
-# from pages import gestao_produtos_page, gerenciamento_usuarios_page, movimentacao_page, pdv_page, relatorios_page
+# Importações de outros ficheiros do seu projeto
+from utils import init_connection
+from pages import gestao_produtos_page, gerenciamento_usuarios_page, movimentacao_page, pdv_page, relatorios_page
 
-# --- FUNÇÕES DE CONEXÃO E DADOS (assumindo que estão neste ficheiro agora) ---
-def init_connection():
-    """Inicializa e retorna o cliente de conexão com o Supabase."""
-    try:
-        url = st.secrets["SUPABASE_URL"]
-        key = st.secrets["SUPABASE_KEY"]
-        return create_client(url, key)
-    except Exception as e:
-        st.error(f"Erro ao conectar com o Supabase. Verifique seus Secrets. Detalhes: {e}")
-        return None
+st.set_page_config(page_title="Sistoque | Sistema de Gestão", layout="wide")
 
-def supabase_client_hash_func(client: Client) -> int:
-    """Função de hash para o cliente Supabase, para uso com cache."""
-    return id(client)
+# Inicializa o cliente Supabase
+supabase = init_connection()
 
-@st.cache_data(ttl=60, hash_funcs={Client: supabase_client_hash_func})
-def get_dashboard_data(supabase: Client):
-    """Busca os dados necessários para o dashboard."""
-    produtos_response = supabase.table('produtos').select('*').execute()
-    movimentacoes_response = supabase.table('movimentacoes').select('*').eq('tipo_movimentacao', 'SAÍDA').execute()
+if not supabase:
+    st.stop()
+
+# --- Gerenciamento de Estado da Sessão ---
+if 'user' not in st.session_state:
+    st.session_state.user = None
+if 'user_role' not in st.session_state:
+    st.session_state.user_role = None
+
+# --- Funções de Autenticação ---
+def get_user_profile(user_id):
+    response = supabase.table('perfis').select('cargo, status, nome_completo').eq('id', user_id).single().execute()
+    return response.data if response.data else None
+
+def logout():
+    st.session_state.user = None
+    st.session_state.user_role = None
+    st.cache_data.clear()
+    streamlit_js_eval(js_expressions='window.location.hash = ""') # Limpa o hash da URL
+    st.rerun()
+
+# --- TELA DE LOGIN / RECUPERAÇÃO DE SENHA ---
+if st.session_state.user is None:
+    st.markdown("""<style>[data-testid="stSidebar"] {display: none;}</style>""", unsafe_allow_html=True)
     
-    df_produtos = pd.DataFrame(produtos_response.data)
-    df_movimentacoes = pd.DataFrame(movimentacoes_response.data)
+    # --- NOVA LÓGICA PARA CAPTURAR O TOKEN DA URL ---
+    url_hash = streamlit_js_eval(js_expressions='window.location.hash', want_output=True)
+    params = {}
+    if url_hash and isinstance(url_hash, str) and url_hash.startswith('#'):
+        # Parseia os parâmetros da URL (ex: #access_token=...&type=recovery)
+        param_list = url_hash[1:].split('&')
+        for param in param_list:
+            if '=' in param:
+                key, value = param.split('=', 1)
+                params[key] = value
+
+    access_token = params.get("access_token")
     
-    return df_produtos, df_movimentacoes
+    # --- MOSTRA O FORMULÁRIO DE NOVA SENHA SE O TIPO FOR "RECOVERY" ---
+    if params.get("type") == "recovery" and access_token:
+        st.title("🔑 Defina sua Nova Senha")
+        with st.form("update_password_form"):
+            new_password = st.text_input("Nova Senha", type="password")
+            confirm_password = st.text_input("Confirme a Nova Senha", type="password")
+            
+            if st.form_submit_button("Atualizar Senha"):
+                if not new_password or new_password != confirm_password:
+                    st.error("As senhas não correspondem ou estão em branco.")
+                else:
+                    try:
+                        # Usa o access_token para atualizar o usuário
+                        supabase.auth.update_user(
+                            {"password": new_password}, 
+                            access_token=access_token
+                        )
+                        st.success("Sua senha foi atualizada com sucesso! Você já pode fazer o login.")
+                        st.balloons()
+                        # Limpa o hash da URL para não ficar "preso" nesta tela
+                        streamlit_js_eval(js_expressions='window.location.hash = ""')
+                    except Exception as e:
+                        st.error(f"Não foi possível atualizar a senha. O link pode ter expirado. Erro: {e}")
 
-# --- PÁGINA PRINCIPAL ---
-def main():
-    supabase = init_connection()
-    if not supabase:
-        st.stop()
-
-    if 'user' not in st.session_state:
-        st.session_state.user = None
-    if 'user_role' not in st.session_state:
-        st.session_state.user_role = None
-
-    # --- TELA DE LOGIN ---
-    if st.session_state.user is None:
-        st.markdown("""<style>[data-testid="stSidebar"] {display: none;}</style>""", unsafe_allow_html=True)
+    # --- MOSTRA A TELA DE LOGIN NORMAL SE NÃO FOR RECUPERAÇÃO DE SENHA ---
+    else:
         st.title("📦 Sistoque | Controle de Estoque e Vendas")
         login_tab, signup_tab = st.tabs(["Entrar", "Cadastre-se"])
         
@@ -62,8 +89,7 @@ def main():
                 if st.form_submit_button("Entrar"):
                     try:
                         session = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                        profile_response = supabase.table('perfis').select('cargo, status, nome_completo').eq('id', session.user.id).single().execute()
-                        profile = profile_response.data
+                        profile = get_user_profile(session.user.id)
                         if profile and profile['status'] == 'Ativo':
                             st.session_state.user = session.user
                             st.session_state.user_role = profile['cargo']
@@ -75,20 +101,17 @@ def main():
                     except Exception:
                         st.error("Falha no login. Verifique seu e-mail e senha.")
 
-            # --- SEÇÃO ADICIONADA: RECUPERAÇÃO DE SENHA ---
             st.divider()
             with st.expander("🔑 Esqueci minha senha"):
                 with st.form("reset_form", clear_on_submit=True):
                     email_reset = st.text_input("Digite o seu e-mail para recuperação")
-                    submitted_reset = st.form_submit_button("Enviar link de recuperação")
-                    if submitted_reset:
+                    if st.form_submit_button("Enviar link de recuperação"):
                         try:
                             supabase.auth.reset_password_for_email(email_reset)
                             st.success("Se este e-mail estiver cadastrado, um link para redefinir sua senha foi enviado.")
                         except Exception as e:
                             st.error(f"Ocorreu um erro: {e}")
-            # --- FIM DA SEÇÃO ADICIONADA ---
-
+        
         with signup_tab:
             with st.form("signup_form", clear_on_submit=True):
                 nome_completo = st.text_input("Nome Completo")
@@ -105,17 +128,14 @@ def main():
                             st.success("Cadastro realizado! Verifique seu e-mail para confirmação e aguarde a aprovação do administrador.")
                         except Exception as e:
                             st.error(f"Erro no cadastro: {e}")
-        return
 
-    # --- APLICAÇÃO PRINCIPAL PÓS-LOGIN ---
+# --- APLICAÇÃO PRINCIPAL PÓS-LOGIN ---
+else:
     with st.sidebar:
         st.subheader(f"Bem-vindo(a), {st.session_state.user.user_metadata.get('nome_completo', '')}!")
         st.write(f"Cargo: **{st.session_state.user_role}**")
         if st.button("Sair (Logout)", use_container_width=True):
-            st.session_state.user = None
-            st.session_state.user_role = None
-            st.cache_data.clear()
-            st.rerun()
+            logout()
 
     selected = option_menu(
         menu_title=None,
@@ -132,83 +152,20 @@ def main():
 
     if selected == "Dashboard":
         st.title("📈 Dashboard de Performance")
-        
-        df_produtos, df_movimentacoes = get_dashboard_data(supabase)
-
-        if df_produtos.empty:
-            st.warning("Ainda não há dados suficientes para exibir o dashboard.")
-            return
-
-        st.subheader("Indicadores Chave")
-        
-        df_produtos['data_validade'] = pd.to_datetime(df_produtos['data_validade'], errors='coerce')
-        
-        brasilia_tz = pytz.timezone("America/Sao_Paulo")
-        hoje = datetime.now(brasilia_tz).date()
-
-        valor_estoque = (df_produtos['estoque_atual'] * df_produtos['preco_venda']).sum()
-        itens_baixo_estoque = df_produtos[df_produtos['estoque_atual'] <= df_produtos['qtd_minima_estoque']].shape[0]
-        
-        df_com_validade = df_produtos[df_produtos['data_validade'].notna()]
-        itens_vencendo = df_com_validade[
-            (df_com_validade['data_validade'].dt.date >= hoje) &
-            (df_com_validade['data_validade'].dt.date <= hoje + timedelta(days=30))
-        ].shape[0]
-        
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Valor de Venda do Estoque", f"R$ {valor_estoque:,.2f}")
-        col2.metric("Itens com Estoque Baixo", f"{itens_baixo_estoque}")
-        col3.metric("Itens Vencendo em 30 dias", f"{itens_vencendo}", help="Produtos que irão vencer nos próximos 30 dias.")
-
-        st.divider()
-
-        c1, c2 = st.columns(2)
-        with c1:
-            st.subheader("Top 5 Produtos com Mais Estoque")
-            if not df_produtos.empty:
-                top_estoque = df_produtos.nlargest(5, 'estoque_atual')
-                st.bar_chart(top_estoque.set_index('nome')['estoque_atual'])
-
-        with c2:
-            st.subheader("Produtos Próximos do Vencimento")
-            if not df_com_validade.empty:
-                df_vencendo = df_com_validade.copy()
-                df_vencendo['dias_para_vencer'] = (df_vencendo['data_validade'].dt.date - hoje).dt.days
-                df_vencendo_proximo = df_vencendo[df_vencendo['dias_para_vencer'] >= 0].nsmallest(5, 'dias_para_vencer')
-                
-                if not df_vencendo_proximo.empty:
-                    st.dataframe(
-                        df_vencendo_proximo[['nome', 'dias_para_vencer']].rename(columns={'nome': 'Produto', 'dias_para_vencer': 'Dias para Vencer'}),
-                        hide_index=True, use_container_width=True
-                    )
-                else:
-                    st.info("Nenhum produto a vencer nos próximos dias.")
-            else:
-                st.info("Nenhum produto com data de validade cadastrada.")
-    
-    # --- As chamadas para as outras páginas foram removidas para focar no ficheiro principal ---
-    # --- Você precisaria recriar a lógica de importação se separar os ficheiros novamente ---
+        # Lógica do Dashboard aqui...
     elif selected == "PDV":
-        st.error("Lógica da página PDV a ser implementada aqui.")
-        # pdv_page.render_page(supabase)
+        pdv_page.render_page(supabase)
     elif selected == "Produtos":
-        st.error("Lógica da página Produtos a ser implementada aqui.")
-        # gestao_produtos_page.render_page(supabase)
+        gestao_produtos_page.render_page(supabase)
     elif selected == "Movimentação":
-        st.error("Lógica da página Movimentação a ser implementada aqui.")
-        # movimentacao_page.render_page(supabase)
+        movimentacao_page.render_page(supabase)
     elif selected == "Relatórios":
         if st.session_state.user_role == 'Admin':
-            st.error("Lógica da página Relatórios a ser implementada aqui.")
-            # relatorios_page.render_page(supabase)
+            relatorios_page.render_page(supabase)
         else:
             st.error("🚫 Acesso restrito a Administradores.")
     elif selected == "Usuários":
         if st.session_state.user_role == 'Admin':
-            st.error("Lógica da página Usuários a ser implementada aqui.")
-            # gerenciamento_usuarios_page.render_page(supabase)
+            gerenciamento_usuarios_page.render_page(supabase)
         else:
             st.error("🚫 Acesso restrito a Administradores.")
-
-if __name__ == "__main__":
-    main()
