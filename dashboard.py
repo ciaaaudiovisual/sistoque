@@ -40,7 +40,8 @@ def logout():
 if st.session_state.user is None:
     st.markdown("""<style>[data-testid="stSidebar"] {display: none;}</style>""", unsafe_allow_html=True)
     
-    # --- NOVA LÓGICA PARA CAPTURAR O TOKEN DA URL ---
+if st.session_state.user is None:
+    st.markdown("""<style>[data-testid="stSidebar"] {display: none;}</style>""", unsafe_allow_html=True)
     url_hash = streamlit_js_eval(js_expressions='window.location.hash', want_output=True)
     params = {}
     if url_hash and isinstance(url_hash, str) and url_hash.startswith('#'):
